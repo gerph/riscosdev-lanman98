@@ -1,0 +1,165 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 28/4/97: Initial version
+ */
+
+#include <string.h>
+#include "strext.h"
+#include "memory.h"
+#include "error.h"
+#include "fsys_err.h"
+#include "fsys.h"
+#include "fspsup_e.h"
+
+#include "fspsup_d.h"
+
+#define CACHE_OFF (0)
+
+struct place_s
+{
+    fsys_object_t dir;
+    char *leaf;
+};
+
+
+void FSPDropObjCache(void)
+{
+}
+
+void FSPDropObjectFromCache(fsys_object_t obj)
+{
+}
+
+
+void FSPDropImageFromCache(fsys_image_t img)
+{
+}
+
+
+fsys_object_t FSPPath2Object(path_t path, fsys_image_t img)
+{
+    return FsysPath2Object(path, img);
+}
+
+
+fsys_object_t FSPName2Object(char *name, fsys_image_t img, int im)
+{
+    path_t path;
+    fsys_object_t f;
+
+    path = FSPName2Path(name, img, im);
+    ExceptTry
+    {
+        f = FSPPath2Object(path, img);
+        FSPPathDestruct(path);
+    }
+    ExceptCatch
+    {
+        FSPPathDestruct(path);
+        ExceptRethrow();
+    }
+    return f;
+}
+
+
+place_t FSPPath2Place(path_t path, fsys_image_t img)
+{
+    volatile place_t res;
+    volatile fsys_object_t f;
+
+    f = NULL;
+    res = NULL;
+    ExceptTry
+    {
+        if(path->ntok < 1)
+            ErrorNum(ERR_NotFound);
+        path->ntok--;
+        f = FsysPath2Object(path, img);
+        path->ntok++;
+        if(f)
+        {
+            res = Malloc(sizeof(*res));
+            res->leaf = NULL;
+            res->dir = NULL;
+            res->leaf = strdup(path->tok[path->ntok-1]);
+            res->dir = f;
+            f = NULL;
+        }
+    }
+    ExceptCatch
+    {
+        if(f) FsysFree(f);
+        if(res) FSPDestructPlace(res);
+        ExceptRethrow();
+    }
+    return res;
+}
+
+
+place_t FSPName2Place(char *name, fsys_image_t img, int im)
+{
+    path_t path;
+    place_t p;
+
+    path = FSPName2Path(name, img, im);
+    ExceptTry
+    {
+        p = FSPPath2Place(path, img);
+        FSPPathDestruct(path);
+    }
+    ExceptCatch
+    {
+        FSPPathDestruct(path);
+        ExceptRethrow();
+    }
+    return p;
+}
+
+fsys_object_t FSPPlace2NewFile(place_t p)
+{
+    return FsysCreateFile(p->dir, p->leaf);
+}
+
+
+fsys_object_t FSPPlace2NewDirectory(place_t p)
+{
+    return FsysCreateDirectory(p->dir, p->leaf);
+}
+
+
+void FSPRename(fsys_object_t f, place_t p)
+{
+    FsysRename(f, p->leaf);
+}
+
+
+void FSPDestructPlace(place_t p)
+{
+    if(p->dir) FsysFree(p->dir);
+    if(p->leaf) Free(p->leaf);
+    Free(p);
+}

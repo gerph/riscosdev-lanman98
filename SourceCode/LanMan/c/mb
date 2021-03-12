@@ -1,0 +1,306 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 19/12/96: Initial version
+ */
+
+#include <string.h>
+#include "date.h"
+#include "word.h"
+#include "error.h"
+#include "mb.h"
+
+typedef struct
+{
+    int smb_idf;
+    char smb_com;
+    char smb_rcls;
+    char smb_reh;
+    word16_t smb_err;
+    char flags;
+    word16_t flags2;
+    word16_t smb_res[6];
+    word16_t smb_tid;
+    word16_t smb_pid;
+    word16_t smb_uid;
+    word16_t smb_mid;
+} header_t;
+
+void MBInit(data_t mb)
+{
+    header_t *hdr;
+
+    hdr = (header_t *) mb.buf;
+    memset(hdr, 0, sizeof(*hdr));
+    hdr->smb_idf = 0x424D53FF;
+    SetWord16(hdr->smb_tid, 1);
+    SetWord16(hdr->smb_pid, 1);
+    SetWord16(hdr->smb_uid, 1);
+    SetWord16(hdr->smb_mid, 1);
+}
+
+void MBSetCom(data_t mb, int com)
+{
+    ((header_t *)mb.buf)->smb_com = com;
+}
+
+void MBSetTid(data_t mb, int tid)
+{
+    SetWord16(((header_t *)mb.buf)->smb_tid, tid);
+}
+
+int MBGetUid(data_t mb)
+{
+    return Word16(((header_t *)mb.buf)->smb_uid);
+}
+
+int MBError(data_t mb)
+{
+    return ((header_t *)mb.buf)->smb_rcls;
+}
+
+void MBSetVWV(data_t mb, int n, ushort vwv[])
+{
+    char *p;
+
+    p = mb.buf;
+    p += sizeof(header_t);
+    *p++ = n;
+    if(n) memcpy(p, vwv, n * sizeof(short));
+    p += n * sizeof(short);
+    SetWord16(p, 0);
+}
+
+void MBAddDialect(data_t mb, char *dia) /* Check overflow */
+{
+    char *p, *pp;
+    int n, len;
+
+    p = mb.buf;
+    p += sizeof(header_t);
+    n = *p++;
+    p += n * sizeof(short);
+    n = Word16(p);
+    pp = p + sizeof(word16_t);
+    pp[n++] = DIALECT;
+    len = strlen(dia)+1;
+    memcpy(&pp[n], dia, len);
+    n += len;
+    SetWord16(p, n);
+}
+
+void MBAddAscii(data_t mb, char *dia)
+{
+    char *p, *pp;
+    int n, len;
+
+    p = mb.buf;
+    p += sizeof(header_t);
+    n = *p++;
+    p += n * sizeof(short);
+    n = Word16(p);
+    pp = p + sizeof(word16_t);
+    pp[n++] = ASCII;
+    len = strlen(dia)+1;
+    memcpy(&pp[n], dia, len);
+    n += len;
+    SetWord16(p, n);
+}
+
+void MBContinueAscii(data_t mb, char *dia)
+{
+    char *p, *pp;
+    int n, len;
+
+    p = mb.buf;
+    p += sizeof(header_t);
+    n = *p++;
+    p += n * sizeof(short);
+    n = Word16(p);
+    pp = p + sizeof(word16_t);
+    --n;
+    len = strlen(dia)+1;
+    memcpy(&pp[n], dia, len);
+    n += len;
+    SetWord16(p, n);
+}
+
+void MBAddVarBlk(data_t mb, int size, void *data)
+{
+    char *p, *pp;
+    int n;
+
+    p = mb.buf;
+    p += sizeof(header_t);
+    n = *p++;
+    p += n * sizeof(short);
+    n = Word16(p);
+    pp = p + sizeof(word16_t);
+    pp[n++] = VARBLK;
+    SetWord16(&pp[n], size);
+    n += sizeof(word16_t);
+    memcpy(&pp[n], data, size);
+    n += size;
+    SetWord16(p, n);
+}
+
+void MBAddData(data_t mb, int size, void *data)
+{
+    char *p, *pp;
+    int n;
+
+    p = mb.buf;
+    p += sizeof(header_t);
+    n = *p++;
+    p += n * sizeof(short);
+    n = Word16(p);
+    pp = p + sizeof(word16_t);
+    pp[n++] = DATA;
+    SetWord16(&pp[n], size);
+    n += sizeof(word16_t);
+    if(size) memcpy(&pp[n], data, size);
+    n += size;
+    SetWord16(p, n);
+}
+
+void MBAddRaw(data_t mb, int size, void *data)
+{
+    char *p, *pp;
+    int n;
+
+    p = mb.buf;
+    p += sizeof(header_t);
+    n = *p++;
+    p += n * sizeof(short);
+    n = Word16(p);
+    pp = p + sizeof(word16_t);
+    memcpy(&pp[n], data, size);
+    n += size;
+    SetWord16(p, n);
+}
+
+void MBGetVWV(data_t mb, int n, ushort vwv[])
+{
+    char *p;
+    int actual_n;
+
+    p = mb.buf;
+    p += sizeof(header_t);
+    actual_n = *p++;
+    if(actual_n < n)
+        Error("Data fields missing in reply");
+    memcpy(vwv, p, n * sizeof(short));
+}
+
+char *MBGetRawBuf(data_t mb, int *size)
+{
+    char *p;
+    int n;
+
+    p = mb.buf;
+    p += sizeof(header_t);
+    n = *p++;
+    p += n * sizeof(short);
+    if (size) *size = Word16(p);
+    p += sizeof(word16_t);
+    return p;
+}
+
+void MBGetBuf(data_t mb, smb_buf_t *smb_buf)
+{
+    char *p;
+    int n, room;
+
+    p = mb.buf;
+    p += sizeof(header_t);
+    n = *p++;
+    p += n * sizeof(short);
+    room = Word16(p);
+    p += sizeof(word16_t);
+    if(room == 0)
+    {
+        smb_buf->type = 0;
+        return;
+    }
+    smb_buf->type = *p++;
+    switch(smb_buf->type)
+    {
+        case VARBLK:
+        case DATA:
+            smb_buf->size = Word16(p);
+            p += sizeof(word16_t);
+    }
+    smb_buf->data = p;
+}
+
+int MBBufType(smb_buf_t *smb_buf)
+{
+    return smb_buf->type;
+}
+
+int MBBufSize(smb_buf_t *smb_buf)
+{
+    return smb_buf->size;
+}
+
+char *MBBufData(smb_buf_t *smb_buf)
+{
+    return smb_buf->data;
+}
+
+int MBMessLen(data_t mb)
+{
+    int len;
+
+    len = sizeof(header_t);
+    len += 1 + mb.buf[len] * sizeof(word16_t);
+    len += 2 + Word16(mb.buf + len);
+    return len;
+}
+
+void MBClearError(data_t mb)
+{
+    header_t *hdr;
+    hdr = (header_t *) mb.buf;
+    hdr->smb_rcls = 0;
+    SetWord16(hdr->smb_err, 0);
+}
+
+void MBSetFlags(data_t mb, int f1, int f2)
+{
+    header_t *hdr;
+    hdr = (header_t *) mb.buf;
+    hdr->flags = f1;
+    SetWord16(hdr->flags2, f2);
+}
+
+void MBGetError(data_t mb, int *error, int *sub_error)
+{
+    header_t *hdr;
+    hdr = (header_t *) mb.buf;
+    *error = hdr->smb_rcls;
+    *sub_error = Word16(hdr->smb_err);
+}

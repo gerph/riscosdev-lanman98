@@ -1,0 +1,17 @@
+About draw tags
+
+Draw tag blocks are allocated for applications which implement tagged draw
+objects in accordance with the DrawFile functional specification (found in
+Volume 4 of the RISC OS 3 Programmers Reference Manual).  They are allocated
+in blocks of &100.  A block is allocated to a company, not to an individual 
+product.  A new allocation can be requested once a current one  has been
+exhausted.
+
+If a draw tag block is required then you will need to ensure that the 'block
+required' option is turned on and a description of what it will be used for
+is entered.
+
+To add the allocation to the list you will need to click SELECT on the 'Add' 
+icon.
+
+To abort this operation you should click SELECT on the 'Cancel' icon.

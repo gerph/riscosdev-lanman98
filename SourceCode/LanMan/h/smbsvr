@@ -1,0 +1,50 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 27/12/97: Initial version
+ */
+
+struct smb_server_s
+{
+    vc_t vc;
+    int dialect;
+    int max_raw_read;
+    int date_time_reversed;
+    int nas_basic_firmware;
+    char *(*ro2smb)(char *);
+    char *(*smb2ro)(char *);
+    void (*send)(vc_t);
+    void (*receive)(vc_t);
+    char *(*name_map)(char *);
+    smb_obj_t (*construct)(smb_server_t);
+    smb_obj_t (*dup)(smb_obj_t);
+    void (*destruct)(smb_obj_t);
+    int (*form)(smb_obj_t, char *);
+    int (*first)(smb_obj_t, char *);
+    int (*next)(smb_obj_t);
+    void (*flush)(smb_obj_t);
+    void (*disk_info)(smb_server_t, smb_disc_info_t *);
+};

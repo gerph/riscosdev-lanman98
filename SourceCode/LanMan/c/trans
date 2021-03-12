@@ -1,0 +1,239 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+ 
+/*   PHBG 30/12/97: Initial version
+ */
+
+#include <string.h>
+#include "memory.h"
+#include "error.h"
+#include "data.h"
+#include "vc.h"
+#include "smbcmd.h"
+#include "mb.h"
+
+#include "trans.h"
+
+#define MIN(x,y) ((x) < (y) ? (x) : (y))
+#define MAX(x,y) ((x) > (y) ? (x) : (y))
+
+
+void echo(vc_t vc, void (*send)(vc_t), void (*receive)(vc_t))
+{
+    data_t mb;
+    ushort vwv[1];
+
+    mb = VCBuffer(vc);
+    MBSetCom(mb, SMBecho);
+    vwv[0] = 1;
+    MBSetVWV(mb, 1, vwv);
+    MBAddRaw(mb, 6, "hello");
+    send(vc);
+    receive(vc);
+}
+
+
+trans_buf_t TransInitBuf(int in, int out)
+{
+    trans_buf_t tb;
+
+    tb = Malloc(sizeof(*tb));
+    tb->in = in;
+    tb->out = out;
+    tb->buf = Malloc(MAX(in, out));
+    tb->refs = 1;
+    return tb;
+}
+
+trans_buf_t TransDupBuf(trans_buf_t tb)
+{
+    tb->refs++;
+    return tb;
+}
+
+void TransFreeBuf(trans_buf_t tb)
+{
+    if(tb)
+    {
+        tb->refs--;
+        if(tb->refs <= 0)
+        {
+            Free(tb->buf);
+            Free(tb);
+        }
+    }
+}
+
+static void trans_communicate(trans_buf_t setup, trans_buf_t parm, trans_buf_t data, vc_t vc, void (*send)(vc_t), void (*receive)(vc_t), char *name)
+{
+    data_t mb;
+    int n_vwv;
+    ushort *vwv;
+    int parm_received, data_received;
+    int parm_displacement, data_displacement;
+    int parm_offset, parm_count, data_offset, data_count;
+    int parm_pad, data_pad;
+    int dummy = 0, first;
+
+    parm_displacement = 0;
+    data_displacement = 0;
+
+    mb = VCBuffer(vc);
+    n_vwv = 14 + setup->in/2;
+    parm_offset = HDRSIZE + 1 + n_vwv * sizeof(short) + sizeof(short);
+    if(name) parm_offset += strlen(name) + 1;
+    parm_pad = -parm_offset & 3;
+    parm_offset += parm_pad;
+    parm_count = MIN(parm->in - parm_displacement, mb.size - parm_offset);
+    data_offset = parm_offset + parm_count;
+    data_pad = -data_offset & 3;
+    data_offset += data_pad;
+    data_count = MIN(data->in - data_displacement, mb.size - data_offset);
+    if(parm_count == 0)
+    {
+        parm_offset = 0;
+    }
+    if(data_count == 0)
+    {
+        data_offset = data_pad = 0;
+    }
+
+    MBSetCom(mb, name ? SMBtransaction : SMBtransaction2);
+    vwv = Malloc(MAX(28+setup->in, 20+setup->out));
+    ExceptTry
+    {
+        vwv[0] = parm->in;
+        vwv[1] = data->in;
+        vwv[2] = parm->out;
+        vwv[3] = data->out;
+        vwv[4] = setup->out;
+        vwv[5] = 0;
+        vwv[6] = 100; // Timeout ???
+        vwv[7] = 100; // Timeout ???
+        vwv[8] = 0;
+        vwv[9] = parm_count;
+        vwv[10] = parm_offset;
+        vwv[11] = data_count;
+        vwv[12] = data_offset;
+        vwv[13] = setup->in/2;
+        memcpy(vwv+14, setup->buf, setup->in);
+        MBSetVWV(mb, n_vwv, vwv);
+        if(name) MBAddRaw(mb, strlen(name)+1, name);
+        if(parm_pad) MBAddRaw(mb, parm_pad, &dummy);
+        if(parm_count) MBAddRaw(mb, parm_count, ((char *)parm->buf) + parm_displacement);
+        if(data_pad) MBAddRaw(mb, data_pad, &dummy);
+        if(data_count) MBAddRaw(mb, data_count, ((char *)data->buf) + data_displacement);
+        send(vc);
+        parm_displacement += parm_count;
+        data_displacement += data_count;
+
+        if(parm_displacement < parm->in || data_displacement < data->in)
+            receive(vc);
+        while(parm_displacement < parm->in || data_displacement < data->in)
+        {
+            n_vwv = name ? 8 : 9;
+            parm_offset = HDRSIZE + 1 + n_vwv * sizeof(short) + sizeof(short);
+            parm_pad = -parm_offset & 3;
+            parm_offset += parm_pad;
+            parm_count = MIN(parm->in - parm_displacement, mb.size - parm_offset);
+            data_offset = parm_offset + parm_count;
+            data_pad = -data_offset & 3;
+            data_offset += data_pad;
+            data_count = MIN(data->in - data_displacement, mb.size - data_offset);
+            if(data_count == 0) data_pad = 0;
+
+            MBSetCom(mb, name ? SMBtransaction_secondary : SMBtransaction2secondary);
+            vwv[0] = parm->in;
+            vwv[1] = data->in;
+            vwv[2] = parm_count;
+            vwv[3] = parm_offset;
+            vwv[4] = parm_displacement;
+            vwv[5] = data_count;
+            vwv[6] = data_offset;
+            vwv[7] = data_displacement;
+            if(name == NULL) vwv[8] = (ushort) -1;
+            MBSetVWV(mb, n_vwv, vwv);
+            if(parm_pad) MBAddRaw(mb, parm_pad, &dummy);
+            if(parm_count) MBAddRaw(mb, parm_count, ((char *)parm->buf) + parm_displacement);
+            if(data_pad) MBAddRaw(mb, data_pad, &dummy);
+            if(data_count) MBAddRaw(mb, data_count, ((char *)data->buf) + data_displacement);
+            send(vc);
+            parm_displacement += parm_count;
+            data_displacement += data_count;
+        }
+
+        parm_received = data_received = 0;
+        first = 1;
+        while(parm_received < parm->out || data_received < data->out)
+        {
+            receive(vc);
+            MBGetVWV(mb, 10 + setup->out/2, vwv);
+            if(vwv[0] > parm->out || vwv[1] > data->out || vwv[9] > setup->out/2)
+                Error("Unexpectedly large response from Transaction");
+            if(vwv[0] < parm->out) parm->out = vwv[0];
+            if(vwv[1] < data->out) data->out = vwv[1];
+            if(vwv[9] < setup->out/2 && first) setup->out = vwv[9]*2;
+            first = 0;
+
+
+            if(vwv[9]) memcpy(setup->buf, vwv+10, vwv[9]*2);
+            if(vwv[3]) memcpy(((char *)parm->buf) + vwv[5], mb.buf + vwv[4], vwv[3]);
+            if(vwv[6]) memcpy(((char *)data->buf) + vwv[8], mb.buf + vwv[7], vwv[6]);
+
+            parm_received += vwv[3];
+            data_received += vwv[6];
+        }
+    }
+    ExceptCatch
+    {
+        Free(vwv);
+        ExceptRethrow();
+    }
+    Free(vwv);
+    echo(vc, send, receive);
+}
+
+void TransCommunicate(trans_buf_t setup, trans_buf_t parm, trans_buf_t data, vc_t vc, void (*send)(vc_t), void (*receive)(vc_t))
+{
+    trans_communicate(setup, parm, data, vc, send, receive, NULL);
+}
+
+void TransRAP(trans_buf_t parm, trans_buf_t data, vc_t vc, void (*send)(vc_t), void (*receive)(vc_t))
+{
+    trans_buf_t setup;
+
+    setup = TransInitBuf(0, 0);
+    ExceptTry
+    {
+        trans_communicate(setup, parm, data, vc, send, receive, "\\PIPE\\LANMAN");
+    }
+    ExceptCatch
+    {
+        TransFreeBuf(setup);
+        ExceptRethrow();
+    }
+    TransFreeBuf(setup);
+}

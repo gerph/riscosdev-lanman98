@@ -1,0 +1,21 @@
+Handle WACKs
+
+Wait for conflicts
+
+Make DOS names lower case
+
+Remove printfs in FSLIB
+
+Turn off SHOW_CALLS in FSLIB
+
+HourGlass
+
+domain logon from omni
+
+Find uid in shiffed packets.
+
+Autodismount on broken pipe error
+
+Avoid unnecessary final read from file.
+
+copying !Run file.

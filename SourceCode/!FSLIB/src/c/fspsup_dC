@@ -1,0 +1,415 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 28/4/97: Initial version
+ */
+
+#include <string.h>
+#include "strext.h"
+#include "memory.h"
+#include "error.h"
+#include "fsys_err.h"
+#include "fsys.h"
+#include "fspsup_e.h"
+
+#include "fspsup_d.h"
+
+#define CACHE_OFF (0)
+
+struct place_s
+{
+    fsys_object_t dir;
+    char *leaf;
+};
+
+
+static fsys_image_t cache_img = NULL;
+static int cache_depth = 0;
+static fsys_object_t cache[MAX_DEPTH];
+static char *cached_failure = NULL;
+static int failure_depth;
+
+
+static void drop_cached_failure(void)
+{
+    if(cached_failure)
+    {
+        Free(cached_failure);
+        cached_failure = NULL;
+    }
+}
+
+
+static int known_to_have_failed(int depth, char *name)
+{
+    return cached_failure && failure_depth == depth
+                          && ci_strcmp(name, cached_failure) == 0;
+}
+
+
+static void record_failure(int depth, char *name)
+{
+    drop_cached_failure();
+    failure_depth = depth;
+    cached_failure = strdup(name);
+}
+
+
+static void set_cache_depth(int n)
+{
+    if(n < failure_depth)
+        drop_cached_failure();
+    while(cache_depth > n)
+        FsysFree(cache[--cache_depth]);
+    if(cache_depth < n-1)
+        Error("Large cache increment (bug)");
+    cache_depth = n;
+}
+
+
+static void assign_cache(int i, fsys_object_t f)
+{
+    set_cache_depth(i);
+    cache[cache_depth++] = FsysDup(f);
+}
+
+
+static void assign_cache_ref(int i, fsys_object_t f)
+{
+    set_cache_depth(i);
+    cache[cache_depth++] = FsysNewRef(f);
+}
+
+
+static int is_cached(int i, char *name)
+{
+    return i < cache_depth && ci_strcmp(FsysGetName(cache[i]), name) == 0;
+}
+
+
+void FSPDropObjCache(void)
+{
+    set_cache_depth(0);
+}
+
+void FSPDropObjectFromCache(fsys_object_t obj)
+{
+    int i;
+
+    for(i = 0; i < cache_depth && cache[i] != obj; i++)
+        ;
+    set_cache_depth(i);
+}
+
+
+void FSPDropImageFromCache(fsys_image_t img)
+{
+    if(img == cache_img)
+        set_cache_depth(0);
+}
+
+
+fsys_object_t FSPPath2Object(path_t path, fsys_image_t img)
+{
+    volatile fsys_object_t f;
+    int i, ntok;
+    char **tok;
+
+#if CACHE_OFF
+    set_cache_depth(0);
+#endif
+    if(img != cache_img)
+    {
+        set_cache_depth(0);
+        cache_img = img;
+    }
+    f = NULL;
+    ExceptTry
+    {
+        ntok = path->ntok;
+        tok = path->tok;
+        if(cache_depth == 0)
+            cache[cache_depth++] = FsysImgRoot(img);
+        for(i = 1; i < ntok && is_cached(i, tok[i]); i++)
+            ;
+        if(i < ntok)
+        {
+            if(i < cache_depth)
+            {
+                f = FsysNext(FsysDup(cache[i]));
+                if(f)
+                {
+                    if(ci_strcmp(FsysGetName(f), tok[i]) == 0)
+                        assign_cache(i++, f);
+                    FsysFree(f);
+                }
+            }
+            if(i < ntok && !known_to_have_failed(i, tok[i]))
+            {
+                f = FsysDup(cache[i-1]);
+                while(i < ntok && f)
+                {
+                    if(FsysGetType(f) == FSYS_DIRECTORY)
+                    {
+                        f = FsysIn(f);
+                    }
+                    else
+                    {
+                        FsysFree(f);
+                        f = NULL;
+                    }
+                    while(f && ci_strcmp(tok[i], FsysGetName(f)) != 0)
+                        f = FsysNext(f);
+                    if(f)
+                        assign_cache(i++, f);
+                }
+                if(f)
+                {
+                    FsysFree(f);
+                    f = NULL;
+                }
+                else
+                {
+                    record_failure(i, tok[i]);
+                }
+            }
+        }
+    }
+    ExceptCatch
+    {
+        if(f) FsysFree(f);
+        ExceptRethrow();
+    }
+    return i == ntok ? FsysNewRef(cache[i - 1]) : NULL;
+}
+
+
+fsys_object_t FSPName2Object(char *name, fsys_image_t img, int im)
+{
+    path_t path;
+    fsys_object_t f;
+
+    path = FSPName2Path(name, img, im);
+    ExceptTry
+    {
+        f = FSPPath2Object(path, img);
+        FSPPathDestruct(path);
+    }
+    ExceptCatch
+    {
+        FSPPathDestruct(path);
+        ExceptRethrow();
+    }
+    return f;
+}
+
+
+place_t FSPPath2Place(path_t path, fsys_image_t img)
+{
+    volatile place_t res;
+    volatile fsys_object_t f;
+    int i, ntok;
+    char **tok;
+
+#if CACHE_OFF
+    set_cache_depth(0);
+#endif
+    if(img != cache_img)
+    {
+        set_cache_depth(0);
+        cache_img = img;
+    }
+    f = NULL;
+    res = NULL;
+    ExceptTry
+    {
+        tok = path->tok;
+        ntok = path->ntok - 1;
+        if(ntok < 0)
+            ErrorNum(ERR_NotFound);
+        if(cache_depth == 0)
+            cache[cache_depth++] = FsysImgRoot(img);
+        for(i = 1; i < ntok && is_cached(i, tok[i]); i++)
+            ;
+        if(i < ntok)
+        {
+            if(i < cache_depth)
+            {
+                f = FsysNext(FsysDup(cache[i]));
+                if(f)
+                {
+                    if(ci_strcmp(FsysGetName(f), tok[i]) == 0)
+                        assign_cache(i++, f);
+                    FsysFree(f);
+                }
+            }
+            if(i < ntok && !known_to_have_failed(i, tok[i]))
+            {
+                f = FsysDup(cache[i-1]);
+                while(i < ntok && f)
+                {
+                    if(FsysGetType(f) == FSYS_DIRECTORY)
+                    {
+                        f = FsysIn(f);
+                    }
+                    else
+                    {
+                        FsysFree(f);
+                        f = NULL;
+                    }
+                    while(f && ci_strcmp(tok[i], FsysGetName(f)) != 0)
+                        f = FsysNext(f);
+                    if(f)
+                        assign_cache(i++, f);
+                }
+                if(f)
+                {
+                    FsysFree(f);
+                    f = NULL;
+                }
+                else
+                {
+                    record_failure(i, tok[i]);
+                }
+            }
+        }
+        if(i == ntok)
+        {
+            res = Malloc(sizeof(*res));
+            res->leaf = NULL;
+            res->dir = NULL;
+            res->leaf = strdup(tok[i]);
+            res->dir = FsysNewRef(cache[i - 1]);
+        }
+    }
+    ExceptCatch
+    {
+        if(f) FsysFree(f);
+        if(res) FSPDestructPlace(res);
+        ExceptRethrow();
+    }
+    return res;
+}
+
+
+place_t FSPName2Place(char *name, fsys_image_t img, int im)
+{
+    path_t path;
+    place_t p;
+
+    path = FSPName2Path(name, img, im);
+    ExceptTry
+    {
+        p = FSPPath2Place(path, img);
+        FSPPathDestruct(path);
+    }
+    ExceptCatch
+    {
+        FSPPathDestruct(path);
+        ExceptRethrow();
+    }
+    return p;
+}
+
+
+fsys_object_t FSPPlace2Object(place_t p)
+{
+    volatile fsys_object_t f;
+    int i;
+
+    f = NULL;
+    ExceptTry
+    {
+        if(p == NULL)
+            Error("Attempt to locate NOWHERE (bug)");
+        if(FsysGetType(p->dir) != FSYS_DIRECTORY)
+            ErrorNum(ERR_NotFound);
+        for(i = 0; i < cache_depth - 1 && cache[i] != p->dir; i++)
+            ;
+        if(is_cached(i+1, p->leaf))
+        {
+            f = FsysNewRef(cache[i+1]);
+        }
+        else if(!known_to_have_failed(i+1, p->leaf))
+        {
+            f = FsysDup(p->dir);
+            f = FsysIn(f);
+            while(f && ci_strcmp(p->leaf, FsysGetName(f)) != 0)
+                f = FsysNext(f);
+        }
+    }
+    ExceptCatch
+    {
+        if(f) FsysFree(f);
+        ExceptRethrow();
+    }
+    return f;
+}
+
+
+fsys_object_t FSPPlace2NewFile(place_t p)
+{
+    fsys_object_t f;
+    int i;
+
+    drop_cached_failure();
+    f = FsysCreateFile(p->dir, p->leaf);
+    for(i = 0; i < cache_depth && cache[i] != p->dir; i++)
+        ;
+    if(i < cache_depth)
+        assign_cache_ref(i+1, f);
+    return f;
+}
+
+
+fsys_object_t FSPPlace2NewDirectory(place_t p)
+{
+    fsys_object_t f;
+    int i;
+
+    drop_cached_failure();
+    f = FsysCreateDirectory(p->dir, p->leaf);
+    for(i = 0; i < cache_depth && cache[i] != p->dir; i++)
+        ;
+    if(i < cache_depth)
+        assign_cache_ref(i+1, f);
+    return f;
+}
+
+
+void FSPRename(fsys_object_t f, place_t p)
+{
+    drop_cached_failure();
+    FsysRename(f, p->leaf);
+}
+
+
+void FSPDestructPlace(place_t p)
+{
+    if(p->dir) FsysFree(p->dir);
+    if(p->leaf) Free(p->leaf);
+    Free(p);
+}

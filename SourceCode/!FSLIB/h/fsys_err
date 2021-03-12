@@ -1,0 +1,44 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 24/4/97: Initial version
+ */
+
+#ifndef _FSYS_ERR_
+#define _FSYS_ERR_
+
+#define ERR_DiscNotFound    0x100D4,"Disc not found"
+#define ERR_NotFound    0x100D6,"Not found"
+#define ERR_DiscFull    0x100C6,"Disc full"
+#define ERR_Locked      0x100C3,"Locked"
+#define ERR_DirNotEmpty 0x100B4,"Directory not empty"
+#define ERR_DirFull     0x100B3,"Directory full"
+#define ERR_BadName     0x100CC,"Bad name"
+#define ERR_FileOpen    0x100C2,"File open"
+#define ERR_BadWrt      0x100FC|0x7600,"Invalid address"
+
+
+#endif

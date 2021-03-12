@@ -1,0 +1,173 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 7/10/96: Initial version
+ */
+
+#ifndef _FSYS_
+#define _FSYS_
+
+#include "path.h"
+
+#ifndef NULL
+#define NULL (0)
+#endif
+
+#define FSYS_FILE       (1)
+#define FSYS_DIRECTORY  (2)
+
+// File attributes
+#define FSYS_LOCKED     (8)
+#define FSYS_WRITE      (2)
+#define FSYS_READ       (1)
+
+// File system flags
+#define FSYS_FLAG_SPECIAL_FIELDS (((unsigned int)1)<<31)
+#define FSYS_FLAG_NULL_PATHS     (1<<29)
+#define FSYS_FLAG_IMAGE_FILES	 (1<<23)
+#define FSYS_FLAG_READ_ONLY	 (1 << 16)
+
+typedef struct fsys_image_s *fsys_image_t;
+
+typedef struct fsys_object_s *fsys_object_t;
+
+typedef struct fsys_handle_s *fsys_handle_t;
+
+typedef struct {unsigned int low, high;} int64;
+
+extern char *FsysFSName;
+
+extern int   FsysFSNumber;
+
+extern int   FsysFlags;
+
+extern char *FsysStartText;
+
+
+
+void FsysEnter(void);
+
+void FsysLeave(void);
+
+
+void FsysShut(void);
+
+
+
+fsys_image_t FsysImageFromFileHandle(int);
+
+fsys_image_t FsysImageFromDiscName(char *, char *);
+
+void FsysKillImage(fsys_image_t);
+
+void FsysStamp(fsys_image_t, int);
+
+void FsysFlushImage(fsys_image_t);
+
+void FsysSpace(fsys_image_t, int64 *, int64 *);
+
+char *FsysGetDiscName(fsys_image_t);
+
+void FsysSetDiscName(fsys_image_t, char *);
+
+char *FsysDiscType(fsys_image_t);
+
+int FsysDiscCycleId(fsys_image_t);
+
+
+char *FsysNameMap(char *, fsys_image_t);
+
+
+fsys_object_t FsysCreateFile(fsys_object_t, char *);
+
+fsys_object_t FsysCreateDirectory(fsys_object_t, char *);
+
+void FsysRename(fsys_object_t, char *);
+
+void FsysMove(fsys_object_t, fsys_object_t);
+
+void FsysDelete(fsys_object_t);
+
+
+
+fsys_object_t FsysPath2Object(path_t, fsys_image_t);
+
+fsys_object_t FsysImgRoot(fsys_image_t);
+
+fsys_object_t FsysIn(fsys_object_t);
+
+fsys_object_t FsysNext(fsys_object_t);
+
+fsys_object_t FsysDup(fsys_object_t);
+
+fsys_object_t FsysNewRef(fsys_object_t);
+
+void FsysFree(fsys_object_t);
+
+
+char *FsysGetName(fsys_object_t);
+
+int FsysGetLength(fsys_object_t);
+
+void FsysSetLength(fsys_object_t, int);
+
+int FsysGetLoadAddr(fsys_object_t);
+
+void FsysSetLoadAddr(fsys_object_t, int);
+
+int FsysGetExecAddr(fsys_object_t);
+
+void FsysSetExecAddr(fsys_object_t, int);
+
+int FsysGetAttributes(fsys_object_t);
+
+void FsysSetAttributes(fsys_object_t, int);
+
+int FsysGetType(fsys_object_t);
+
+int FsysGetBlockSize(fsys_object_t);
+
+void FsysFlushObject(fsys_object_t);
+
+
+fsys_handle_t FsysOpen(fsys_object_t, int update, unsigned int fd);
+
+void FsysClose(fsys_handle_t);
+
+int FsysGetSize(fsys_handle_t);
+
+void FsysEnsureSize(fsys_handle_t, int);
+
+void FsysLimitSize(fsys_handle_t, int);
+
+fsys_object_t FsysHandle2File(fsys_handle_t);
+
+void FsysRead(void *, int, int, fsys_handle_t);
+
+void FsysWrite(void *, int, int, fsys_handle_t);
+
+
+#endif /* _FSYS_ */

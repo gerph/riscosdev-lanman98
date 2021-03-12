@@ -1,0 +1,14 @@
+About Service Calls
+
+A Service Call block is allocated to a third party who wishes to implement
+service calls in their modules (see the Programmers Reference Manual for more
+information).  They are allocated on a per company basis.
+
+If a Service Call block is required then you will need to ensure that the
+'block required' option is selected and you have entered a description of
+what the block will be used for.
+
+To add the allocation to the list you will need to click SELECT on the 'Add' 
+icon.
+
+To abort this operation you should click SELECT on the 'Cancel' icon.

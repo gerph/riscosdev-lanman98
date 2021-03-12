@@ -1,0 +1,96 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG  17/3/98: Initial version
+ *   PHBG  20/12/98: Changed to enumerate current LM98 mounts
+ */
+
+#include <string.h>
+#include "kernel.h"
+#include "PGerr.h"
+#include "lm_swis.h"
+#include "lm98enum.h"
+
+#define MOUNT_BUF_SIZE (256)
+
+
+static char mount_buf[MOUNT_BUF_SIZE];
+static int mount_index;
+static int mount_index_limit;
+static int mount_resume_key;
+
+void LM98EnumBegin(void)
+{
+    _kernel_swi_regs r;
+    _kernel_oserror *err;
+
+    r.r[0] = 5;
+    r.r[1] = (int) mount_buf;
+    r.r[2] = MOUNT_BUF_SIZE;
+    r.r[3] = 0;
+    err = _kernel_swi(LanMan98_OmniOp, &r, &r);
+    if(err) ErrorFatal("Enumeration failed");
+    mount_index = 0;
+    mount_index_limit = r.r[1] - (int) mount_buf;
+    mount_resume_key = r.r[3];
+}
+
+int LM98EnumGoing(void)
+{
+    return mount_index < mount_index_limit;
+}
+
+void LM98EnumNext(void)
+{
+    _kernel_swi_regs r;
+    _kernel_oserror *err;
+
+    mount_index += 8;
+    mount_index += strlen(mount_buf + mount_index) + 1;
+    mount_index = mount_index + 3 & ~3;
+    if(mount_index >= mount_index_limit && mount_resume_key)
+    {
+        r.r[0] = 4;
+        r.r[1] = (int) mount_buf;
+        r.r[2] = MOUNT_BUF_SIZE;
+        r.r[3] = mount_resume_key;
+        err = _kernel_swi(LanMan98_OmniOp, &r, &r);
+        if(err) ErrorFatal("Enumeration failed");
+        mount_index = 0;
+        mount_index_limit = r.r[1] - (int) mount_buf;
+        mount_resume_key = r.r[3];
+    }
+}
+
+int LM98EnumMount(void)
+{
+    return ((int *)(mount_buf + mount_index + 4))[0];
+}
+
+char *LM98EnumName(void)
+{
+    return mount_buf + mount_index + 8;
+}

@@ -1,0 +1,7 @@
+Set LanMan98$Dir <Obey$Dir>
+Set File$Type_069 LM98Link
+Set LM98$Path <LanMan98$Dir>.
+|
+Set LM98$sprites 5Sprites
+RMEnsure Utilitymodule 5.00 Set LM98$sprites !Sprites
+IconSprites <LanMan98$Dir>.<LM98$Sprites>

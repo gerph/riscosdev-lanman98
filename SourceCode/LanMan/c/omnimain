@@ -1,0 +1,648 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 7/10/96: Initial version
+ */
+
+
+#include <ctype.h>
+#include <string.h>
+#include <stdio.h>
+
+// #include "MemCheck:MemCheck.h"
+
+
+#include "swis.h"
+#include "kernel.h"
+#include "error.h"
+#include "nodebug.h"
+#include "memory.h"
+#include "callback.h"
+#include "omni_swis.h"
+#include "lm_swis.h"
+#include "fspatch.h"
+#include "showfree.h"
+#include "fsys.h"
+#include "mount.h"
+#include "netbios.h"
+#include "logon.h"
+#include "mapping.h"
+#include "omniheader.h"
+
+
+#if 0
+#define NC_ONLY
+#endif
+
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+
+static char user_reg[512 + 16] = "unencrypted  regRO Devs Open Source Edition";
+
+static void add_fs(void *pw)
+{
+    FsPatchAddFS(pw);
+}
+
+static void remove_fs(void)
+{
+    FsPatchRemoveFS();
+}
+
+static void omni_register(void)
+{
+    _kernel_swi_regs r;
+    static char desc[256];
+
+    sprintf(desc, "CIFS client v" Module_VersionString "\n© WSS Paul Gardiner\n%s", user_reg + 16);
+    r.r[0] = LanMan98_OmniOp;     /* Client ID            */
+    r.r[1] = 0xf; /* Flags: RC_NEEDS_USERID | RC_NEEDS_PASSWD | RC_NEEDS_MOUNTPATH |
+                            RC_DOES_FILES | RC_EXTN_CHAR('.') | RC_DOES_PRINT | RC_NEEDS_PRINTPWD */
+    r.r[2] = (int) "omni_lm98";   /* Sprite name - 12 max */ 
+    r.r[3] = (int) "LanMan98";    /* Title bar - 24 max   */
+    r.r[4] = (int) desc;          /* Info box - 3x32 max  */
+    r.r[5] = 0;                   /* Site ID (ignored)    */
+    r.r[6] = (int) "LanMan98";    /* FilingSystemName     */
+    _kernel_swi(Omni_RegisterClient, &r, &r);
+    return;
+    r.r[0] = LanMan98_LogonOp;
+    r.r[1] = 0x5F;
+    r.r[3] = (int) "Logon98";
+    _kernel_swi(Omni_RegisterClient, &r, &r);
+}
+
+static void omni_deregister(void)
+{
+    _kernel_swi_regs r;
+
+    r.r[0] = LanMan98_OmniOp;
+    _kernel_swi(Omni_DeregisterClient, &r, &r);
+    r.r[0] = LanMan98_LogonOp;
+    _kernel_swi(Omni_DeregisterClient, &r, &r);
+}
+
+_kernel_oserror* finalise(int fatal, int podule, void *pw)
+{
+    CallBacksOff();
+    omni_deregister();
+    ShowFreeDeReg(FsysFSNumber);
+    remove_fs();
+    FsysShut();
+//    MemCheck_OutputBlocksInfo();
+    // ThreadLibraryFinalise();
+    MemFinalise();
+    return NULL;
+}
+
+#ifdef MemCheck_MEMCHECK
+/*
+#include "tcp.h"
+#include "blocked.h"
+
+static int mem_printf(void *reference, const char *format, va_list args)
+{
+    static tcp_conn_t conn = NULL;
+    static char buf[1024];
+    int res, time;
+
+    MemCheck_SetChecking(0, 0);
+    ExceptTry
+    {
+        if(conn == NULL)
+        {
+            conn = TcpCall(TCP_PORT_ANY, 1777, TcpResolve("10.0.0.1"));
+            TcpSetNoDelay(conn);
+        }
+        res = vsprintf(buf, format, args);
+        TcpWrite(buf, strlen(buf), conn);
+        time = Time() + 100;
+        while(Time() - time < 0)
+            BlockedWait();
+    }
+    ExceptCatch
+    {
+        return 0;
+    }
+    MemCheck_SetChecking(1, 1);
+    return res;
+}
+*/
+
+static int mem_printf(void *reference, const char *format, va_list args)
+{
+    FILE *f;
+    int n;
+
+    f = fopen("<LanMan98$Dir>.MemCheck", "ab");
+    if(f)
+    {
+        n = vfprintf(f, format, args);
+        fclose(f);
+    }
+    return n;
+}
+
+#endif
+
+#ifdef NC_ONLY
+static void nc_check(char *mname, int mver)
+{
+    int mod_num = 0;
+    int rom_sect = -1;
+    int regs = _IN(0)|_IN(1)|_IN(2)|_OUT(1)|_OUT(2)|_OUT(3)|_OUT(6);
+    char *name;
+    int ver;
+
+    while(rom_sect == -1 && NULL == _swix(OS_Module, regs, 20, mod_num, rom_sect, &mod_num, &rom_sect, &name, &ver))
+    {
+        if(strcmp(mname, name) == 0 && mver <= ver)
+            return;
+    }
+    Error("This version of LanMan98 works only with NCs");
+}
+#endif
+
+
+_kernel_oserror *initialise(const char *cmd_tail, int podule, void *pw)
+{
+//    MemCheck_Init();
+    // MemCheck_RedirectToFilename("CIFS_Mem");
+//    MemCheck_RedirectToFunction(mem_printf, NULL);
+//    MemCheck_InterceptSCLStringFunctions();
+//    MemCheck_SetQuitting(0, 0);
+    // MemCheck_SetQuitting(1, 1);
+//    MemCheck_OutputBlocksInfo();
+    MemInitialise("LanMan98");
+#ifdef NC_ONLY
+    ExceptTry
+    {
+        nc_check("OSVersion", 0x00010600); // 111 aswell
+    }
+    ExceptCatch
+    {
+        return ExceptCaught();
+    }
+#endif
+    CallBackInit(pw);
+    add_fs(pw);
+    ShowFreeReg(FsysFSNumber);
+    omni_register();
+    MapInit();
+#ifdef NC_ONLY
+    printf("LanMan98 for NC v" Module_VersionString " (c) Warm Silence Software Ltd.\nAll rights reserved.\nAuthor: Paul Gardiner\n\nRegistration: %s\n", user_reg+16);
+#else
+    printf("LanMan98 v" Module_VersionString " (c) Warm Silence Software Ltd 1996-2019.\n(c) RISC OS Developments 2019+\nAll rights reserved.\nAuthor: Paul Gardiner\n\nRegistration: %s\n", user_reg+16);
+#endif
+    return NULL;
+}
+
+void service(int service_number, _kernel_swi_regs *r, void *pw)
+{
+//    MemCheck_RegisterMiscBlock(r, sizeof(*r));
+    switch(service_number)
+    {
+        case 0x40:
+            add_fs(pw);
+            break;
+        case 0xa0:
+            if(r->r[0] == 0)
+                omni_register();
+            break;
+    }
+//    MemCheck_UnRegisterMiscBlock(r);
+}
+
+static int poll_word;
+
+static void connect(int argc, const char *args)
+{
+    char buf[80];
+    int i, len;
+    char *tok[5];
+
+    if(argc < 3 || argc > 5)
+       Error("Wrong number of arguments");
+//    MemCheck_RegisterMiscBlock(args, 80);
+    for(len = 0; len < 79 && !iscntrl(args[len]); len++)
+        buf[len] = args[len];
+    buf[len] = 0;
+    tok[3] = "";
+    tok[4] = "";
+    for(i = 0; i < argc; i++)
+        tok[i] = strtok(i == 0 ? buf : NULL, " \t");
+    FsysMount(tok[0], tok[1], tok[2], tok[3], tok[4]);
+    poll_word = 1;
+    _swix(Omni_EnumerateMounts, _IN(0)|_IN(1), LanMan98_OmniOp, 1);
+//    MemCheck_UnRegisterMiscBlock(args);
+}
+
+static void disconnect(int argc, const char *args)
+{
+    char buf[80];
+    int len;
+    mount_t mt;
+
+    if(argc != 1)
+       Error("Wrong number of arguments");
+//    MemCheck_RegisterMiscBlock(args, 80);
+    for(len = 0; len < 79 && !iscntrl(args[len]); len++)
+        buf[len] = args[len];
+    buf[len] = 0;
+    mt = FsysFindMount(buf);
+    if(mt == NULL)
+        Error("Disc not mounted");
+    FsysDismount(mt);
+    poll_word = 1;
+    _swix(Omni_EnumerateMounts, _IN(0)|_IN(1), LanMan98_OmniOp, 1);
+//    MemCheck_UnRegisterMiscBlock(args);
+}
+
+static void logon(int argc, const char *args)
+{
+    char buf[80];
+    int i, len;
+    char *tok[3];
+
+    if(argc < 2 || argc > 3)
+       Error("Wrong number of arguments");
+//    MemCheck_RegisterMiscBlock(args, 80);
+    for(len = 0; len < 79 && !iscntrl(args[len]); len++)
+        buf[len] = args[len];
+    buf[len] = 0;
+    tok[2] = "";
+    for(i = 0; i < argc; i++)
+        tok[i] = strtok(i == 0 ? buf : NULL, " \t");
+    LogOn(tok[0], tok[1], tok[2]);
+//    MemCheck_UnRegisterMiscBlock(args);
+}
+
+static void logoff(int argc, const char *args)
+{
+    LogOff();
+}
+
+static char *byte_str(int64 *x)
+{
+    static char buf[10];
+
+    if(x->high >> 13)
+        sprintf(buf, "%dTB", x->high >> 8);
+    else if(x->high >> 3)
+        sprintf(buf, "%dGB", (x->high << 2) | (x->low >> 30));
+    else if(x->high || (x->low >> 25))
+        sprintf(buf, "%dMB", (x->high << 12) | (x->low >> 20));
+    else if(x->low >> 15)
+        sprintf(buf, "%dKB", x->low >> 10);
+    else
+        sprintf(buf, "%dB", x->low);
+    return buf;
+}
+
+static void display_free(int argc, const char *args)
+{
+    char buf[80];
+    int len;
+    int64 total, free;
+
+    if(argc != 1)
+       Error("Disc name not specified");
+//    MemCheck_RegisterMiscBlock(args, 80);
+    for(len = 0; len < 79 && !iscntrl(args[len]); len++)
+        buf[len] = args[len];
+    buf[len] = 0;
+    FsysSpace(FsysImageFromDiscName(buf, NULL), &total, &free);
+    if(total.high || free.high)
+    {
+        printf("Bytes free  &%04X%08X = %7s\n", free.high, free.low, byte_str(&free));
+        printf("Bytes total &%04X%08X = %7s\n", total.high, total.low, byte_str(&total));
+    }
+    else
+    {
+        printf("Bytes free  &%08X = %7s\n", free.low, byte_str(&free));
+        printf("Bytes total &%08X = %7s\n", total.low, byte_str(&total));
+    }
+//    MemCheck_UnRegisterMiscBlock(args);
+}
+
+static void enumerate_mounts(char **bufp, int size, int *indexp)
+{
+    mount_t mt;
+    int len;
+
+    while((mt = FsysNthMount(*indexp)) != NULL && (len = ((strlen(FsysMountName(mt)) + 12) & ~3)) <= size)
+    {
+        ((int *) *bufp)[0] = -1;
+        ((int *) *bufp)[1] = (int) mt;
+        strcpy(*bufp + 8, FsysMountName(mt));
+        *bufp += len;
+        size -= len;
+        (*indexp)++;
+    }
+    if(mt == NULL)
+        *indexp = 0;
+}
+
+_kernel_oserror *command(const char *arg_string, int argc, int cmd_no, void *pw)
+{
+    _kernel_swi_regs r;
+
+    ExceptTry
+    {
+        switch(cmd_no)
+        {
+            case 0:
+                r.r[0] = 14;
+                r.r[1] = 0x76;
+                _kernel_swi(OS_FSControl, &r, &r);
+                break;
+            case 1:
+                connect(argc, arg_string);
+                break;
+            case 2:
+                disconnect(argc, arg_string);
+                break;
+            case 3:
+                logon(argc, arg_string);
+                break;
+            case 4:
+                logoff(argc, arg_string);
+                break;
+            case 5:
+                display_free(argc, arg_string);
+                break;
+            case 6:
+                MapCommand(arg_string);
+                break;
+            default:
+                Error("Unknown command");
+        }
+    }
+    ExceptCatch
+    {
+        return ExceptCaught();
+    }
+    return 0;
+}
+
+/*
+#include <stdarg.h>
+
+static int var_printf(char *fmt, ...)
+{
+    static int i = 0;
+    char buf1[32];
+    char buf2[64];
+    va_list args;
+    int ret;
+
+    va_start(args, fmt);
+    ret = vsprintf(buf2, fmt, args);
+    va_end(args);
+    sprintf(buf1, "LanMan98$XXX%03d", i++);
+    VarSet(buf1, buf2);
+    return ret;
+}
+
+static void show(int reg, int val)
+{
+    if(val == 0)
+    {
+        var_printf("R%d is NULL", reg);
+    }
+    else if(strlen((char *) val) > 20)
+    {
+        var_printf("R%d too long", reg);
+    }
+    else
+    {
+        var_printf("R%d = %s", reg, (char *) val);
+    }
+}
+*/
+
+static void omni_op(int op, _kernel_swi_regs *r)
+{
+    mount_t mt;
+    char *name, buf[64];
+
+    switch(op)
+    {
+        case 0:
+            ExceptTry
+            {
+//                MemCheck_RegisterMiscBlock_String((char *) r->r[1]);
+//                MemCheck_RegisterMiscBlock_String((char *) r->r[2]);
+//                MemCheck_RegisterMiscBlock_String((char *) r->r[3]);
+//                MemCheck_RegisterMiscBlock_String((char *) r->r[4]);
+//                MemCheck_RegisterMiscBlock_String((char *) r->r[5]);
+                mt = FsysMount((char *) r->r[4],
+                               (char *) r->r[1],
+                     	       (char *) r->r[5],
+                      	       (char *) r->r[2],
+                      	       (char *) r->r[3]);
+//                MemCheck_UnRegisterMiscBlock((char *) r->r[1]);
+//                MemCheck_UnRegisterMiscBlock((char *) r->r[2]);
+//                MemCheck_UnRegisterMiscBlock((char *) r->r[3]);
+//                MemCheck_UnRegisterMiscBlock((char *) r->r[4]);
+//                MemCheck_UnRegisterMiscBlock((char *) r->r[5]);
+                r->r[1] = (int) mt;
+                poll_word = 1;
+                _swix(Omni_EnumerateMounts, _IN(0)|_IN(1), LanMan98_OmniOp, 1);
+            }
+            ExceptCatch
+            {
+//                MemCheck_UnRegisterMiscBlock((char *) r->r[1]);
+//               MemCheck_UnRegisterMiscBlock((char *) r->r[2]);
+//               MemCheck_UnRegisterMiscBlock((char *) r->r[3]);
+//                MemCheck_UnRegisterMiscBlock((char *) r->r[4]);
+//                MemCheck_UnRegisterMiscBlock((char *) r->r[5]);
+                r->r[1] = 0;
+                ExceptRethrow();
+            }
+            break;
+        case 1:
+            FsysDismount((mount_t) r->r[1]);
+            MemMinimalise();
+            poll_word = 1;
+            _swix(Omni_EnumerateMounts, _IN(0)|_IN(1), LanMan98_OmniOp, 1);
+            break;
+        case 5:
+            enumerate_mounts((char **) &r->r[1], r->r[2], &r->r[3]);
+            break;
+        case 6:
+        case 7:
+            name = FsysMountName((mount_t) r->r[1]);
+            if(name)
+            {
+                sprintf(buf, "Filer_OpenDir LanMan98::%s.$", name);
+                _kernel_oscli(buf);
+            }
+            break;
+        case 8:
+            Error("Not supported");
+            r->r[1] = LoggedOn() ? 0x9 : 0xF;
+            break;
+        case 9:
+            mt = (mount_t) r->r[1];
+            r->r[1] = (int) FsysMountServer(mt);
+            r->r[2] = (int) FsysMountUser(mt);
+            r->r[3] = (int) FsysMountName(mt);
+            r->r[4] = (int) FsysMountPath(mt);
+            r->r[5] = 0;
+            r->r[6] = 0;
+            break;
+        default:
+            ErrorErr(_kernel_swi(LanMan_OmniOp, r, r));
+    }
+}
+
+static void logon_op(int op, _kernel_swi_regs *r)
+{
+    switch(op)
+    {
+        case 0:
+            LogOn((char *) r->r[1], (char *) r->r[2], (char *) r->r[3]);
+            r->r[0] = -1;
+            break;
+        /*
+        case 3:
+            if(r->r[3] == 0)
+            {
+                ((int *) r->r[1])[0] = 0;
+                strcpy((char *)(r->r[1] + 4), "Logon98");
+                r->r[1] += 12;
+                strcpy((char *)(r->r[1]), "logon98");
+                r->r[1] += 8;
+                strcpy((char *)(r->r[1]), "Logon Network");
+                r->r[1] += 16;
+            }
+            r->r[3] = 0;
+            break;
+        */
+        case 17:
+            LogOff();
+            break;
+    }
+}
+
+static void sub64(int64 *res, int64 *op1, int64 *op2)
+{
+    res->high = op1->high - op2->high;
+    res->low = op1->low - op2->low;
+    if(op2->low > op1->low)
+        res->high--;
+}
+
+static void free_op(_kernel_swi_regs *r)
+{
+    static int len;
+
+    switch(r->r[0])
+    {
+        case 0:
+            break;
+        case 1:
+            strcpy((char*) r->r[2], (char*) r->r[3]);
+            r->r[0] = len = strlen((char*) r->r[2]);
+            break;
+        case 2:
+            {
+                fsys_image_t img;
+                int64 total, free, used;
+                int *buf;
+
+                img = FsysImageFromDiscName((char *) r->r[3], NULL);
+                if(img == NULL)
+                    Error("Disc not found...");
+                FsysSpace(img, &total, &free);
+                sub64(&used, &total, &free);
+                buf = (int *) r->r[2];
+                buf[0] = total.high ? 0xffffffff : total.low;
+                buf[1] = free.high ? 0xffffffff : free.low;
+                buf[2] = used.high ? 0xffffffff : used.low;
+            }
+            break;
+        case 3:
+            Error("Impossible");
+            break;
+        case 4:
+            {
+                fsys_image_t img;
+                int64 total, free, used;
+                int64 *buf;
+
+                img = FsysImageFromDiscName((char *) r->r[3], NULL);
+                if(img == NULL)
+                    Error("Disc not found...");
+                FsysSpace(img, &total, &free);
+                sub64(&used, &total, &free);
+                buf = (int64 *) r->r[2];
+                buf[0] = total;
+                buf[1] = free;
+                buf[2] = used;
+                r->r[0] = 0;
+            }
+            break;
+        default:
+            Error("Bad \"Free\" reason code");
+    }
+}
+
+_kernel_oserror *swi_handler(int swi_no, _kernel_swi_regs *r, void *pw)
+{
+    static _kernel_oserror error_ill_swi = {0x10000, "Illegal SWI"};
+    _kernel_oserror *err;
+
+//    MemCheck_RegisterMiscBlock(r, sizeof(*r));
+    err = NULL;
+    ExceptTry
+    {
+        switch(swi_no + LanMan98SWIBase)
+        {
+            case LanMan98_OmniOp:
+                omni_op(r->r[0], r);
+                break;
+            case LanMan98_Bad1:
+                free_op(r);
+                break;
+            case LanMan98_LogonOp:
+                logon_op(r->r[0], r);
+                break;
+            case LanMan98_PollWord:
+                poll_word = 0;
+                r->r[0] = (int) &poll_word;
+                break;
+            default:
+                err = &error_ill_swi;
+        }
+    }
+    ExceptCatch
+    {
+        err = ExceptCaught();
+        err->errnum = 0;
+    }
+//    MemCheck_UnRegisterMiscBlock(r);
+    return err;
+}

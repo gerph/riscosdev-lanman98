@@ -1,0 +1,4 @@
+Set BaseLIB$Path <Obey$Dir>.
+Set Alias$BaseLIBMakeCommand Dir BaseLIB:src|Mamu
+TaskWindow BaseLIBMakeCommand -name "Make: BaseLIB" -display -quit
+Unset Alias$BaseLIBMakeCommand

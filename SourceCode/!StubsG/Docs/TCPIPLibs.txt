@@ -1,0 +1,210 @@
+Using TCP/IP libraries
+======================
+
+The TCP/IP network stack can be used through the networking libraries
+provided in the TCPIPLibs directory. The networking libraries are based on
+those provided by FreeBSD and should allow most TCP and UDP based tools to
+be used without significant changes. There are three major libraries
+provided in this distribution :
+
+  * SockLib
+    Two Libraries for accessing the BSD sockets interface provided by the
+    Internet. Two major versions of the library provided. The base SockLib
+    library is compatible with both Internet 4 and Internet 5 modules.
+    Alternatively, there is a Internet 5 only version of the library. See
+    below for more details.
+
+  * InetLib
+    A library providing translations between different formats of names
+    including address, host, service and protocol naming conversions.
+    
+  * UnixLib
+    The UnixLib library provides support facilities for compiling some unix
+    based applications.
+
+
+Internet module documentation
+-----------------------------
+The chapter from the PRM detailing the use of the Internet module has been
+reproduced within this distribution (as 'Internet/html') to provide fuller
+information about the operation of the Internet module. This chapter
+documents the Internet module as supplied with RISC OS 3.5 and 3.6, and as a
+softload upgrade for earlier systems. It has yet to be updated to
+incorporate details from later releases, including this one, of the Internet
+module and libraries. Additional release notes for the Internet module giving
+further information on the changes subsequent to RISC OS 3.6 can be found
+in the 'LibraryDoc/txt' file.
+
+
+Compiling TCP/IP applications
+-----------------------------
+
+The Internet module interface comprise two versions :
+
+   * SockLib, supporting both Internet 4 and Internet 5.
+   * SockLib5, supporting just Internet 5.
+
+The Internet 4 module is based on FreeBSD 4.3 'reno' release, whereas
+Internet 5 is based on FreeBSD 4.4. Although the bulk of the interfaces are
+unchanged between these versions, code must be compiled and linked with the
+relevant library. Most applications should be compiled to use the SockLib
+interfaces in order to be compatible with the largest range of software.
+Code using the SockLib library should be compiled with COMPAT_INET4 defined.
+Code using the SockLib5 library should not have this to be defined.
+
+To clarify :
+  * Applications required to support Internet 4 and Internet 5 and not using
+    the newer features of the Internet module should be compiled with
+    -DCOMPAT_INET4 and linked with SockLib.
+  
+  * Applications required to only support Internet 5 should be compiled
+    with no additional options and linked with SockLib5.
+
+
+License
+-------
+
+The TCP/IP library is based on the FreeBSD internet stack, with
+contributions from various developers. Within the following comments, the
+word 'code' is taken to mean the contents of the TCPIPLibs directory
+including both object and header files. Lines preceeded by an asterisk
+denote sections taken from the headers verbatim. These statements are
+intended as a guide to the licenses used by components of the TCP/IP
+libraries; refer to individual files for details of which license is used.
+The licenses of the TCP/IP libraries are broadly compatible.
+
+The core licence that this is released under is as follows :
+
+ * Copyright (c) 1982-1994
+ *      The Regents of the University of California.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *      This product includes software developed by the University of
+ *      California, Berkeley and its contributors.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+
+
+Portions of the code are under the core licence above with the addition of a
+separate copyright statement :
+
+ * Copyright (c) 1989 Stephen Deering.
+ * This code is derived from software contributed to Berkeley by
+ * Stephen Deering of Stanford University.
+
+
+Portions of the code are under the core licence above with the addition of a
+separate copyright statement :
+
+ * Copyright (c) 1994, Henrik Vestergaard Draboel
+
+
+Portions of the code are under the core licence above with the addition of a
+separate copyright statement from the University of Utah :
+
+ * Copyright (c) 1988 University of Utah.
+ * This code is derived from software contributed to Berkeley by
+ * the Systems Programming Group of the University of Utah Computer
+ * Science Department.
+
+
+Portions of the code are under the core licence above with release statement
+from UNIX System Laboratories, Inc. :
+
+ * (c) UNIX System Laboratories, Inc.
+ * All or some portions of this file are derived from material licenced
+ * to the University of California by American Telephone and Telegraph
+ * Co. or Unix System Laboratories, Inc. and are reproduced herein with
+ * the permission of UNIX System Laboratories, Inc.
+
+
+Porttions of the code are under the core licence above with disclaimer from
+Berkeley Software Design, Inc. :
+
+ * This code is derived from software contributed to Berkeley by
+ * Berkeley Software Design, Inc.
+
+ 
+Portions of the code are copyright Digital Equipment Corporation :
+
+ * Portions Copyright (c) 1993 by Digital Equipment Corporation.
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies, and that
+ * the name of Digital Equipment Corporation not be used in advertising or
+ * publicity pertaining to distribution of the document or software without
+ * specific, written prior permission.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND DIGITAL EQUIPMENT CORP. DISCLAIMS ALL
+ * WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS.   IN NO EVENT SHALL DIGITAL EQUIPMENT
+ * CORPORATION BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+ * DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR
+ * PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS
+ * ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS
+ * SOFTWARE.
+
+
+Portions of the code are copyright Daniel Boulet and Ugen J.S.Antsilevich :
+
+ * Copyright (c) 1993 Daniel Boulet
+ * Copyright (c) 1994 Ugen J.S.Antsilevich
+ *
+ * Redistribution and use in source forms, with and without modification,
+ * are permitted provided that this entire comment appears intact.
+ *
+ * Redistribution in binary form may occur without any restrictions.
+ * Obviously, it would be nice if you gave credit where credit is due
+ * but requiring it would be too onerous.
+ *
+ * This software is provided ``AS IS'' without any warranties of any kind.
+
+
+Portions of the code are copyright ANT Limited :
+
+ * Copyright (C) 1994 ANT Limited., PO BOX 300, Cambridge, England.
+ * All rights reserved.
+ *
+ * Redistribution and use in source code and executable binary forms are
+ * permitted provided that: (1) source distributions retain this entire
+ * copyright notice and comment, and (2) distributions including
+ * executable binaries contain the following acknowledgement:
+ *
+ * ``This product includes software developed by ANT Limited and its
+ * contributors.  Copyright (C) ANT Limited 1994.''
+ *
+ * and also in the documentation and other materials provided with the
+ * distribution and in all advertising materials mentioning features or
+ * use of this software. Neither the name of ANT Limited nor the names of
+ * its contributors may be used to endorse or promote products derived
+ * from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSER.
+ *
+ * NOT INTENDED FOR USE IN LIFE CRITICAL APPLICATIONS.
+

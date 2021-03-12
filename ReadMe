@@ -1,0 +1,572 @@
+               !LanMan98
+               =========
+
+!LanMan98 is a program for networking Acorn computers, running RISC OS with
+PCs, running Windows 95, 98, NT, etc.  It allows users of RISC OS based
+machines full access to remote PC shares.  That is the same role fulfilled by
+LanManFS under !Omniclient, but !LanMan98 offers several advantages over the
+older system.
+
+* !LanMan98 allows files to be displayed and accessed via their long file
+  names, rather than the garbled, backward-compatibility DOS names.
+
+* !LanMan98 is very much faster than LanManFS across TCP/IP (although it is
+  not quite as fast as LanManFS across NetBEUI.
+
+* !LanMan98 prevents the common time-out problems when connected to
+  Windows NT servers.
+
+* !LanMan98 allows use of long file names when a PC is used as a RISC OS file
+  server.
+
+* !LanMan98 allows shares to be accessed across the internet.
+
+* !LanMan98 is the only TCP/IP-based file system that can tolerate file
+  accesses under callback.  Because of this, Fresco does not need to be
+  patched to function correctly on discless machines, and can work more
+  efficiently.
+
+
+!LanMan98 can be used as a stand alone system (with or without Atomwide's
+excellent !NTFiler frontend),  or it can be used with !Omniclient as an
+extension/alternative to LanManFS.  (See the section on installation for
+the setting up procedure for the different styles of use).
+
+
+!LanMan98 implements the CIFS (Common Internet File System) protocol, which
+has arisen out of microsoft's earlier SMB protocol (the protocols used by
+LanManFS).  There are people working towards standardising CIFS, for the more
+general use suggested by the expanded form of its name, and there are already
+servers written for a large number of different platforms; so you may find
+uses for !LanMan98 other than just communication between RISC OS and Windows.
+On the other hand, the current situation is a terrible mess, with the Windows
+95, NT and Vista servers being so different that they cannot be driven in a
+consistent way.
+
+Certainly, users must realise that this version of !LanMan98 was originally
+written for communication with Windows 95, Windows NT, Windows 98 and
+SAMBA only; recent changes have worked around bugs in servers such as Windows
+Vista and some NAS hardware. Success with any other server should be considered
+as a fortuitous event though.
+
+
+Licence
+=======
+
+LanMan98 is licensed under version 1.0 of the CDDL ("Common Development and
+Distribution License").  You may not use or develop this software except in
+compliance with this licence.
+
+You can obtain a copy of the licence alongside the LM98 source code, or at:
+http://www.riscosdev.com/lanman98/LICENCE.CDDL
+
+See the Licence for the specific language governing permissions and
+limitations under the Licence.
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the Licence is distributed on an "AS IS" basis, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+
+The source code for LanMan98 can be found in the SourceCode folder
+alongside !LanMan98.  Some libraries may have other licences which will
+be stated in their relevant documentation.
+
+
+Prerequisites
+=============
+
+At this point, we are going to assume the following things.
+
+* All machines running !LanMan98 must be correctly set up to use TCP/IP.
+
+* All PC servers to which access is required must be running TCP/IP, and must
+  have "File and print sharing via TCP/IP" enabled.
+
+If either of these conditions isn't met, then there is no point continuing
+any further through these instructions as it won't work at the end! Go away
+and sort these out, then come back here. You may find the 'Hints on
+networking' section below helpful here.
+
+
+Installation for use with !Omniclient or !NTFiler
+=================================================
+In the same directory as this file you are now reading you will see the main
+!LanMan98 application, and two subdirectories called "StandAlone" and
+"Restore".  Drag the !LanMan98 application to a sutiable directory on your
+hard disc, and ignore the contents of the two subdirectories: you do not need
+them.  Whenever you wish to use !LanMan98 just double-click the application,
+or better still place the application in your !Boot, inside the
+Choices.Boot.Tasks directory, so that it will be invoked automatically when
+you switch on your computer.
+
+
+Installation for use with neither !Omniclient nor !NTFiler
+==========================================================
+Follow the directions for use with !Omniclient, and then open the
+subdirectory called "StandAlone".  You will see what seems to be a second
+copy of the !LanMan98 application.  In fact, it is just a skeleton containing
+the few extra files required for stand-alone use.  Copy this to the same
+directory that you copied the main application.  As with the !Omniclient
+integrated version, you simply need to double-click the !LanMan98 application
+when you wish to use it, or place it in your !Boot.
+
+
+Using !LanMan98 with !Omniclient
+================================
+!LanMan98 is not able to browse your network (i.e., it cannot automatically
+produce a list of all the shares visible from your machine).  However, if you
+have LanManFS (as you may well do if you are running !Omniclient) then
+!LanMan98 can make use of LanManFS's browsing capabilities.  This being the
+case, each auto-detected PC share on your local network will appear twice in
+!Omniclient's "FS list", once with the usual LanManFS icon, and secondly with
+a more colourful icon.  To access a mount via LanManFS, double-click the old
+grey icon; to access a mount via LanMan98, double-click the more colourful
+one.  Also from !Omniclient's main menu, you can follow "Mounts", "Protocols"
+and then click "LanMan98"; this opens a dialogue box into which to type the
+details of the share to be mounted.
+
+
+Using !LanMan98 with !NTFiler
+=============================
+!NTFiler will automatically detect the presence of !LanMan98 and make use of
+it.
+
+
+Using !LanMan98 with neither !Omniclient nor !NTFiler
+=====================================================
+When you double-click the !LanMan98 application (or on computer startup,
+should you have !LanMan98 in your boot sequence), an unnamed icon will appear
+on the left of the icon bar; it look like a mini-tower case with a Windows
+logo painted on the side.  This is !LanMan98 in its dormant state.
+
+To connect to a share for the first time, click the middle button on the bar
+icon and select "New...".  This will open a dialogue box, via which you can
+provide details of the share.  For the "Local name", you choose a name by
+which you wish the share to be known on the RISC OS side.  For "Server", you
+must supply the name of the machine on which the remote share resides.  And
+for "Share" you must supply the name of that share as known to the remote
+machine.  Some shares will require "User name" and/or "Password" to be filled
+in; others will not.
+
+Now click the "Connect" button.  If a connection is successfully made then
+the unnamed icon dissappears, and a new icon appears carrying below it your
+chosen local name for the share.  You can simply click SELECT on the new icon
+to open a filer window on the root directory of the share, and then use it
+just as you would any other disc accessible by your machine.
+
+Repeat the instruction in the above two paragraphs for each share to which
+you need access.  Each will present itself as a new icon on the icon bar.
+
+The typing in of the share's details is necessary only when you first connect
+to it.  Each successfully connected share is remembered by !LanMan98.  To see
+the known shares, click SELECT on the unnamed icon (when !LanMan98 is
+dormant), click ADJUST on any of !LanMan98's disc icons, or select "Show
+discs" from the menu.  A filer window will open showing all the known shares;
+you simply need double-click them to reform the connections (you can also
+drag groups of them to the icon bar for fast forming of connections to
+multiple shares).  If a password was provided at the last time of connection
+to a share then the password is not remembered, but the fact that a password
+was given is remembered, and the usual "Connect" dialogue box appears, with
+all but the password filled in.
+
+
+File types
+==========
+Within the !LanMan98 application is a file named "Mappings".  The lines of
+that file specify a mapping from DOS name extensions to RISC OS file types.
+You can alter this file, but it is probably best not to make a habit of it.
+Modern versions of RISC OS also have a system wide MimeMap file, which contains
+similar mappings and also associated MIME types. LanMan98 will look in its own
+mappings file first, and if a match is not found there then it will check the
+system MimeMap file. If you need to add a filetype mapping, then it is strongly
+recommended that you only add it to the system MimeMap, as other applications
+can then also make use of the mapping.
+The mappings have two effects.  They determine the RISC OS file type for files
+that originate from the PC, and they control whether files originating from
+RISC OS need to have file type information hidden in their names.
+
+For example:
+
+The file xxx.txt created on the PC will appear as xxx.txt from LanMan98 and
+with file type "Text", because the Mappings file takes the extension txt to
+the hexidecimal number &fff, which is the RISC OS code for "Text".
+
+Likewise, a file xxx.txt with file type "Text" created with LanMan98 will
+appear on the PC as xxx.txt.
+
+But a file xxx.txt created with file type "Data" appears on the PC as
+xxx.txt,ffd  The ",ffd" part recording the file type (&ffd is the RISC OS code
+for "Data").
+
+The general rule is, leave the mapping file alone, and things will work
+without you having to think about it, but if you often change the Mappings
+file be careful.  One important case: if you backup your PC via LanMan98 then
+you should save the Mappings file with the backup, because it is essential
+that the same Mappings file is used when Restoring the backup.
+
+The default type for a file with no extension is Text, but this can be changed
+by setting the system variable LanMan98$DefaultType (see the !Run file).
+
+For people who desperately want to avoid the hidden RISC OS, file-type codes
+being tagged to file names, LanMan98 provides a way to avoid them through use
+of special fields.  For example, if you have a share mounted with name PC1
+say then typing, at the command line,
+
+  *Filer_OpenDir LanMan98#notypes::PC1.$
+
+will open a filer window via which files can be created without the hidden
+type codes being being appended to the file names, and within which any
+already existing type codes are made visible.
+
+
+Hidden files
+============
+In its default configuration, LanMan98 respects the DOS hidden file
+attribute, and will not display hidden files.  To override this behaviour,
+set the system variable LanMan98$ShowHidden (any value will do).  There
+is already a commented out line in the !Run file that does this.  Once
+the variable is set, all subsequently made connections will allow access
+to hidden files.
+
+
+Accessing shares across the internet
+====================================
+An additional feature of LanMan98, over those provided by the original
+LanManFS, is that you can mount remote machines via the internet.  To do this
+you must specify the internet address of the server as well as its name.  For
+an example of how to do this, we'll use SUN Microsystem's doc.ic.ac.uk site.
+
+The share name is
+
+    \\sunsite\packages
+
+If this was on you local network, you could access it with !Omniclient by
+using
+
+    SUNSITE
+
+as the "Server", and
+
+    packages
+
+as the "Share".
+
+But across the internet "SUNSITE" isn't enough to find it.  You also need to
+specify that the internet address as being sunsite.doc.ic.ac.uk.  LanMan98
+will accept this extra information, surrounded by angle brackets, appended to
+the server name.  So you should use
+
+    SUNSITE<sunsite.doc.ic.ac.uk>
+
+as the server name.
+
+
+Remote printing
+===============
+If you are using !LanMan98 with !Omniclient, and you have the LanManFS module
+loaded then carry on as you did before; !LanMan98 will not stand in the way
+of remote printing through !Omniclient.
+
+If you are using !LanMan98 in stand-alone mode then you should use a slightly
+different procedure.  Consider the case where you have a PC called "PC1" that
+allows access to a printer under the share name "EPSON".  You should set up
+!Printers as though you had a printer of the type in question directly
+connected to your computer, accept when filling in the details of the
+"Connections" dialogue box.  Here you should check the "File" radio button
+and type in, as the file name
+
+    LanMan98#printer;PC1;EPSON:
+
+Every character in this file name is important including the ":" on the end.
+You can add a user name and/or password after the printer name.
+
+    LanMan98#printer;PC1;EPSON;username;password:
+
+Commands
+========
+LanMan98 has commands equivalent to the *Connect, *Disconnect, *LMLogon and
+*LMLogoff of LanManFS: they are *Connect98, *Disconnect98, *LMLogon98 and
+*LMLogoff98.  You may find you need to use upper case characters in
+specifying the share name for *Connect98.
+
+
+Interaction with Fresco
+=======================
+Fresco is slightly unusual in that it accesses files under callback.
+Although this is a perfectly legitimate thing to do, almost all TCP/IP based,
+remote file systems are flawed in a way that causes errors under such
+conditions.  The file acccesses that are faulted are those to files within
+the !Scrap directory; so the problem is manifest only when your !Scrap
+directory is on a remote server accessed via TCP/IP.
+
+Fresco has been patched to recognise both ShareFS and LanManFS so as to avoid
+the problem, although this does mean that it works less efficiently with them.
+
+!LanMan98, in its default configuration, suffers in the same way as other
+TCP/IP based file systems, but it can be configured to completely solve the
+problem (whether for Fresco or for any other call-back-using application).
+To protect !LanMan98 against call backs, you should set the system variable
+LanMan98$CallBackPatch; any value will do so long as the variable is set, and
+provided the setting of it is performed before the LanMan98 module is loaded.
+There is a line to uncomment in the !Run file specifically for this purpose.
+The patch uses undocumented features of RISC OS and may fail with some
+versions of RISC OS or some versions of the Internet module.
+
+
+Trouble shooting
+================
+If attempts to mount shares give the error message "Cannot find given
+server", or if attempts to logon to a domain fail to mount your home
+directory, then it may be that your network has a NetBIOS name server and
+LanMan98 can't find it.  Try setting the system variable LanMan98$NameServer,
+by typing
+
+    Set LanMan98$NameServer <IP address>
+
+where <IP address> is the network address of the name server in
+ddd.ddd.ddd.ddd format.  If you have one particularly powerful PC running
+Windows NT, then that is probably the name server.  If this does not solve
+the problem, try also typing
+
+    RMKill LanManFS
+
+It may be that LanManFS is preventing LanMan98 from receiving replies from
+the name server.
+
+LanMan98 will also look in your "hosts" file to try and find the IP address
+of a server, so adding a line in you host file for each of the PCs on your
+network might help.
+
+
+Name resolution
+===============
+CIFS servers typically have two names; a DNS hostname and a NetBIOS name. While
+it is possible for these two names to be different, to avoid confusion it is
+strongly recommended that you ensure they are set to the same value. The name
+that you specify in the server field in the connection dialogue box should be
+the NetBIOS name of the server.
+LanMan98 must convert the server name into an IP address, and it will try three
+different methods to do this. First it will make a NetBIOS broadcast, and see
+if any machines respond. If this fails, and the LanMan98$NameServer system
+variable is set, then it will ask that NetBIOS name server (sometime referred to
+as a WINS server) to translate the name. If this still fails, then LanMan98 will
+ask the DNS resolver to translate the name.
+When the name has been translated to an IP address, LanMan98 can start
+connecting to the server. As part of the connection process, it must send the
+NetBIOS name of the server to the server, and the server may check that this
+name matches what it expects. If it doesn't match, the server may return the
+error "Session refused (NetBIOS name not present)".
+If angle brackets are used in the server field, as described in the "Accessing
+shares across the internet" section above, then the name outside the angle
+brackets is the NetBIOS name which is not translated, and the part inside the
+brackets is used to find the IP address of the server only by doing a DNS
+lookup.
+
+
+Problems with Raw Reads
+=======================
+
+Certain devices, notably Windows Vista and some Buffalo NAS boxes claim to
+support 'Raw Reads', but actually do not. LanMan98 is smart enough to spot
+Windows Vista and to avoid using raw reads with it, but with other devices
+it can run into problems.
+
+Raw reads are faster than other reads, so simply avoiding using Raw reads would
+hurt the performance of LanMan98 with well behaved servers. To this end, the
+default is for LanMan98 to use Raw Reads.
+
+If you have a device that is problematic, simply edit !LanMan98.!Run to comment
+out the line that Sets LanMan98$RawRead, save the file, reboot and retry.
+
+
+Hints on Networking
+===================
+
+This section is intended to help people through some common problems with
+setting networks up; it is not a definitive guide, and we can't offer
+assistance with you in performing these steps, but hopefully this should
+help people over the steps.
+
+Q) What hardware do I need to talk to machines on my LAN?
+
+A) You need a network card. These can be bought from your local dealer,
+or from dealers you see advertising in the RISC OS press. Some new machines
+are being brought out with network cards built in; check with the vendor
+of your machine as to whether you need one or not.
+
+------------------------------------------------------------------------------
+
+Q) What hardware do I need to talk to machines over the Internet?
+
+A) Just your modem. First, connect to the internet as usual, then you can
+use LanMan98 to talk to remote servers as described above. LanMan98 will
+not handle dialing up to the internet, mail transfer or anything like that;
+it simply makes use of the connection once it has been established.
+
+------------------------------------------------------------------------------
+
+Q) I've stuck a network card in my machine - is that it?
+
+A) No. As well as having the hardware in your machine you need to run some
+software on your machine to make it all work. You need to run a 'TCP/IP
+stack' to make everything work. The best way to get a TCP/IP stack on your
+machine is simply to run the new !Boot structure (available on various ftp
+and WWW sites, several CD ROMs, and supplied with both new computers and
+with RISC OS 4).
+
+Run !Boot, then go to the network setup icon. Next click the Internet icon
+and ensure that 'Enable TCP/IP Protocol Suite' is ticked.
+
+You now need to ensure that this setup application can see your network
+interface, and you that the computer can find an IP address for your
+machine. Exactly how you do this can be simple (add one manually
+in the interfaces box/hosts file), or very complex (maintain a domain name
+server). There is no way that a simple guide like this can help you
+through this, so your best bet is to contact whoever sold you the network
+card (or machine) to talk you through this.
+
+------------------------------------------------------------------------------
+
+Q) I have a network card installed, and I can see my other RISC OS machine
+on the network. Everything must be setup OK, yes?
+
+A) No. RISC OS machines can talk to one another using the 'Acorn Access'
+protocol. While this talks down the same wires as TCP/IP, it will often work
+while TCP/IP isn't setup right. You still need to setup TCP/IP as above.
+
+------------------------------------------------------------------------------
+
+Q) OK. I have a network card, and I think I've set up TCP/IP, but how can
+I tell?
+
+A) The best test to see whether your TCP/IP stack is working or not is to try
+to 'ping' the other machine. 'ping' is a very simple program that sends a
+'packet' down the network to the remote machine. If it gets there it will be
+sent back. This basically checks that the network is working at the the lowest
+possible level.
+
+To try pinging a machine, go to the command line (in a taskwindow or by
+pressing f12) and type:
+
+ping <machine-name>
+
+(where obviously you replace <machine-name> with the name or IP address of
+the remote machine.) It should be clear from the messages displayed whether
+packets are getting through or not.
+
+------------------------------------------------------------------------------
+
+Q) I can't ping the remote machine! Why?
+
+A) Tons of reasons. Here are some of the most popular:
+
+ * The internet stack is not properly set up on one of the machines. Talk
+to your dealers.
+
+ * Something is wrong with the physical connection between the machines; if
+you are using BNC connectors and co-axial cable, then make sure it is
+properly terminated. If you are using a twisted pair (also known as RJ45)
+lead without a hub then make sure it is a "cross-over" cable. If you are
+using twisted pair leads with a hub then make sure that the hub is
+powered, that the leads aren't connected to the 'uplink' port and that the
+lights on the hub show that a sucessful connection is present. If any of
+these is a problem then talk to the dealer that sold you the hardware.
+
+------------------------------------------------------------------------------
+
+Q) I have a problem with making TCP/IP work on my hardware, and my dealer
+is useless! He can't/won't help me! What should I do?
+
+A) Give us a ring. We can't promise to help, but we will do our best. It is
+important that you do try your dealer first though otherwise we will get
+overwhelmed with requests and will have to cut back on the help we can give.
+
+------------------------------------------------------------------------------
+
+Q) I can ping the machine, but now I still can't make LanMan98 work with it.
+What do I do?
+
+A) Read through the instructions above again step by step and check that you
+have done everything necessary. (Most of our support calls are caused by
+people not reading the instructions properly). If you are still stuck, then
+try to get your phone as near as possible to your computer and give us a ring.
+
+
+Licence
+=======
+!LanMan98 was Copyright © Warm Silence Software Ltd. 1998-2008.
+
+The new Open Source Edition (v2.07+) is Copyright © RISC OS Developments
+2019 onwards.
+
+All rights reserved.
+
+This software is provided 'as is', with no guarantee of its suitability for
+any purpose.  While every effort has been made to ensure the stability of
+this software, we will accept no responsibility for any data lost while using
+this program. NO WARRANTY IS GIVEN!
+
+
+
+Acknowledgements
+================
+
+The author, Paul Gardiner, would like to thank a number of people for help
+with the numerous problems that have occured during the development of this
+software.
+
+* Julian Davison: for much of the initial beta testing, and explaining
+  some of the workings of the original LanManFS.
+
+* Christian Starkjohann: for a never ending stream of advice on the
+  intricacies of the CIFS protocol.
+
+* Kevin Bracey: for explaining many details of the workings of TCP/IP.
+
+* Keith Hall: for formulating and conducting tests that lead to !LanMan98
+  working with Windows NT.
+
+* Robin Watts: for sorting out a stupid bug of mine concerning receipt of
+  broadcast packets.
+
+* Paul Leach: for his part in writing the CIFS specs, and for answering
+  many questions on them.
+
+* Luke Kenneth Casson Leighton: for much help in understanding CIFS
+  browsing.
+
+* Microsoft: for freely releasing all details of the CIFS protocol.
+
+* Erik Devriendt: for a work around for a bug in Windows 95 servers.
+
+* Wookey of Aleph One: for supplying a copy of NetLinks; the initial
+  development of !LanMan98 relied totally on using a PC card as a CIFS
+  server, and that was possible only through the use of NetLinks.
+
+* Julian Smith: for writing MemCheck.  I always like to pretend I don't
+  need MemCheck, but in this case it was a life saver.
+
+* Neil Bingham: for some nice sprites and improvements to the Mappings file,
+  and for hunting out the last few important bugs (they seemed like the last
+  few at the time).
+
+* Paul Corke: for the "notypes" special field idea.
+
+* Tim Howarth: for weeks of help making LanMan98 work with NTFiler, and then
+  yet more help with loads of newly uncovered bugs and bad design decisions
+  that he noticed.  Also, for loads of suggestions, most now implemented.
+
+* Herman van der Sluijs: for somehow spotting exactly how and when dates and
+  times were being garbled previous to version 1.12.  How the hell he
+  noticed that equal dates went to equal times and vise versa, I do not know.
+
+* Stephen Borrill: for much help in preparing the NC version of LanMan98,
+  and for working out the cause of the dreaded "random attributes" bug.
+
+* Justin Fletcher: for producing StubsG, thus enabling seamless operation both
+  on 26 and 32 bit operating systems.
+
+* Alex Waugh: For doing the work for version 2.x.
+
+* CJE Micros: For helping push forward to version 2, not least by putting us
+  in touch with Alex.

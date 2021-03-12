@@ -1,0 +1,518 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 8/2/98: Initial version
+ */
+
+#include <ctype.h>
+#include <string.h>
+#include <stdio.h>
+#include "strext.h"
+#include "error.h"
+#include "memory.h"
+#include "blocked.h"
+#include "thread.h"
+#include "word.h"
+#include "tcp.h"
+#include "time.h"
+#include "var.h"
+#include "netbios.h"
+
+// #define DIAGNOSTICS
+
+#define RETRY_COUNT           (3)
+#define UCAST_RETRY_TIMEOUT   (500)
+#define BCAST_RETRY_TIMEOUT   (25)
+
+#define RESOLVE_TIME_OUT      (2000)
+#define NAME_SERVICE_PORT     (137)
+#define MAX_ADDRESS_SIZE      (256)
+#define BUF_SIZE	      (2048)
+
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+
+typedef enum
+{
+    NAME_QUERY,
+    NODE_STATUS
+} query_id_t;
+
+typedef struct
+{
+    int trid, flags,
+        qdcount, ancount,
+        nscount, arcount;
+    char *qname;
+    int qtype, qclass;
+} query_t;
+
+typedef struct
+{
+    int time_out;
+    int naddr;
+    char (*addr)[6];
+} name_query_response_t;
+
+typedef struct
+{
+    int time_out;
+    int nname;
+    char (*name)[18];
+} node_status_response_t;
+
+static void ensure_timeout(void)
+{
+    if(!ThreadTimedout())
+    {
+        ThreadResetTimeout();
+        ExceptRethrow();
+    }
+}
+
+static int query_poke(char *buf, query_t *nstat)
+{
+    char *p;
+
+    p = buf;
+    SetWord16BE(p, nstat->trid);              p += 2;
+    SetWord16BE(p, nstat->flags);	      p += 2;
+    SetWord16BE(p, nstat->qdcount);	      p += 2;
+    SetWord16BE(p, nstat->ancount);	      p += 2;
+    SetWord16BE(p, nstat->nscount);	      p += 2;
+    SetWord16BE(p, nstat->arcount);	      p += 2;
+    strcpy(p, nstat->qname);		      p += strlen(nstat->qname) + 1;
+    SetWord16BE(p, nstat->qtype);	      p += 2;
+    SetWord16BE(p, nstat->qclass);	      p += 2;
+    return p - buf;
+}
+
+static int query_peek(char *buf, query_t *nstat)
+{
+    char *p;
+
+    p = buf;
+    nstat->trid = Word16BE(p);                p += 2;
+    nstat->flags = Word16BE(p);	      	      p += 2;
+    nstat->qdcount = Word16BE(p);	      p += 2;
+    nstat->ancount = Word16BE(p);	      p += 2;
+    nstat->nscount = Word16BE(p);	      p += 2;
+    nstat->arcount = Word16BE(p);	      p += 2;
+    nstat->qname = p;		              p += strlen(nstat->qname) + 1;
+    nstat->qtype = Word16BE(p);	      	      p += 2;
+    nstat->qclass = Word16BE(p);	      p += 2;
+    return p - buf;
+}
+
+static int node_status_response_peek(char *buf, node_status_response_t *presp)
+{
+    char *p;
+
+    p = buf;
+    presp->time_out = Word32BE(p);                p += 6;
+    presp->nname = *p++;
+    presp->name = (char (*)[18]) p;	      	  p += presp->nname * 18;
+    return p - buf;
+}
+
+static int name_query_response_peek(char *buf, name_query_response_t *presp)
+{
+    char *p;
+
+    p = buf;
+    presp->time_out = Word32BE(p);                p += 4;
+    presp->naddr = Word16BE(p);	      	      	  p += 2;
+    if(presp->naddr % 6 != 0)
+        Error("Currupt address information from name query");
+    presp->addr = (char (*)[6]) p;	      			  p += presp->naddr;
+    presp->naddr /= 6;
+    return p - buf;
+}
+
+/*
+static void out_buf(char *buf, int i)
+{
+    FILE *f;
+
+    f = fopen("CrudOut", "w");
+    fwrite(buf, 1, i, f);
+    fclose(f);
+}
+
+static void in_buf(char *buf, int i)
+{
+    FILE *f;
+
+    f = fopen("CrudIn", "w");
+    fwrite(buf, 1, i, f);
+    fclose(f);
+}
+*/
+
+static int encode_name(char *out, char *name)
+{
+    char buf[16], *p, *scope, *scope_buf;
+    int i, len, j, c;
+
+    scope_buf = VarRead("LanMan98$Scope");
+    scope = scope_buf ? scope_buf : "";
+
+    p = strchr(name, '.');
+    len = p ? p - name : strlen(name);
+    memset(buf, *name == '*' ? 0 : ' ', 16);
+    memcpy(buf, name, MIN(len, 16));
+    j = 0;
+    out[j++] = 32;
+    for(i = 0; i < 16; i++)
+    {
+        c = toupper(buf[i]);
+        out[j++] = (c >> 4) + 'A';
+        out[j++] = (c & 0xF) + 'A';
+    }
+    if(strlen(scope) + 34 > 255)
+    {
+        Free(scope_buf);
+        Error("Scope ID too long");
+    }
+    while(strlen(scope))
+    {
+        p = strchr(scope, '.');
+        len = p ? p - name : strlen(scope);
+        out[j++] = len;
+        memcpy(out + j, scope, len);
+        j += len;
+        scope += len + (p ? 1 : 0);
+    }
+    out[j++] = 0;
+    Free(scope_buf);
+    return j;
+}
+
+typedef struct
+{
+    query_id_t qid;
+    udp_conn_t conn_in, conn_out;
+    char *name, *name_server;
+    tcp_addr_t addr;
+    int trid;
+    char *result;
+    char nbnbuf[256];
+    char buf[BUF_SIZE];
+} *nq_rec_t;
+
+static int base_trid = -1;
+
+static void query_fin(nq_rec_t nq)
+{
+    Free(nq->name);
+    Free(nq->name_server);
+    TcpAddrDestruct(nq->addr);
+    UdpDestruct(nq->conn_in);
+    UdpDestruct(nq->conn_out);
+    Free(nq);
+}
+
+static nq_rec_t query_init(char *name, char *name_server, query_id_t qid)
+{
+    nq_rec_t nq;
+
+    nq = Malloc(sizeof(*nq));
+    memset(nq, 0, sizeof(*nq));
+    ExceptTry
+    {
+        nq->qid = qid;
+        nq->name = strdup(name);
+        nq->name_server = strdup(name_server);
+        if(nq->name_server)
+        {
+            ThreadSetTimeout(RESOLVE_TIME_OUT);
+            ExceptTry
+            {
+                nq->addr = TcpResolve(nq->name_server);
+            }
+            ExceptCatch
+            {
+                ensure_timeout();
+            }
+            ThreadResetTimeout();
+            if(nq->addr == NULL)
+                Error("Can't locate name server (WINS)");
+        }
+        base_trid = ((base_trid == -1 ? Time() : base_trid + 1) & 0x7FFF);
+        nq->trid = base_trid;
+        ExceptTry
+        {
+            nq->conn_in = nq->name_server ? UdpCreate(NAME_SERVICE_PORT) : NULL;
+        } ExceptCatch {}
+        nq->conn_out = UdpCreate(TCP_PORT_ANY);
+        UdpSetPeer(NAME_SERVICE_PORT, nq->addr, nq->conn_out);
+    }
+    ExceptCatch
+    {
+        query_fin(nq);
+        ExceptRethrow();
+    }
+    return nq;
+}
+
+static void query_request(nq_rec_t nq)
+{
+    query_t nstat;
+    int used;
+
+    nstat.trid = nq->trid;
+    nstat.flags = nq->name_server ? 0x100 : 0x110;
+    nstat.qdcount = 1;
+    nstat.ancount = 0;
+    nstat.nscount = 0;
+    nstat.arcount = 0;
+    encode_name(nq->nbnbuf, nq->name);
+    nstat.qname = nq->nbnbuf;
+    switch(nq->qid)
+    {
+        case NAME_QUERY: nstat.qtype = 0x20; break;
+        case NODE_STATUS: nstat.qtype = 0x21; break;
+    }
+    nstat.qclass = 1;
+    used = query_poke(nq->buf, &nstat);
+    // out_buf(nq->buf, used);
+    UdpWrite(nq->buf, used, nq->conn_out);
+}
+
+static void parse_addr(nq_rec_t nq, int offset)
+{
+    name_query_response_t presp;
+
+    name_query_response_peek(nq->buf + offset, &presp);
+    if(presp.naddr >= 1)
+    {
+        nq->result = nq->buf;
+        sprintf(nq->buf, "%d.%d.%d.%d", presp.addr[0][2], presp.addr[0][3],
+                                        presp.addr[0][4], presp.addr[0][5]);
+    }
+}
+
+static void parse_names(nq_rec_t nq, int offset)
+{
+    node_status_response_t presp;
+    char *p;
+    int i;
+
+    node_status_response_peek(nq->buf + offset, &presp);
+    for(i = 0; i < presp.nname; i++)
+    {
+        if(presp.name[i][15] == ' ')
+        {
+            p = strchr(presp.name[i], ' ');
+            *p = 0;
+            nq->result = presp.name[i];
+            return;
+        }
+    }
+}
+
+
+static int query_poll(nq_rec_t nq)
+{
+    query_t nstat;
+    int used, size;
+
+    size = 0;
+    ThreadSetTimeout(0);
+    if(nq->conn_in)
+    {
+        ExceptTry
+        {
+            size = UdpRead(nq->buf, BUF_SIZE, nq->conn_in);
+        }
+        ExceptCatch
+        {
+            ensure_timeout();
+        }
+    }
+    if(size == 0)
+    {
+        ExceptTry
+        {
+            size = UdpRead(nq->buf, BUF_SIZE, nq->conn_out);
+        }
+        ExceptCatch
+        {
+            ensure_timeout();
+        }
+    }
+    ThreadResetTimeout();
+    if(size < 12)
+        return NULL;
+    // in_buf(nq->buf, size);
+    used = query_peek(nq->buf, &nstat);
+    if(nstat.trid == nq->trid
+       && (nstat.flags & 0xF800) == 0x8000
+       && nstat.ancount == 1
+       && nstat.qdcount == 0
+       && strcmp(nstat.qname, nq->nbnbuf) == 0
+       && nstat.qclass == 1)
+    {
+        switch(nq->qid)
+        {
+            case NAME_QUERY:
+                switch(nstat.qtype)
+                {
+                    case 0x20:
+                        parse_addr(nq, used);
+                        return 1;
+                    case 0xA:
+                        return nq->name_server ? 1 : 0;
+                    default:
+                        return 0;
+                }
+                break;
+            case NODE_STATUS:
+                switch(nstat.qtype)
+                {
+                    case 0x21:
+                        parse_names(nq, used);
+                        return 1;
+                    default:
+                        return 0;
+                }
+        }
+    }
+    return 0;
+}
+
+static char *do_query(char *name, char *name_server, query_id_t qid)
+{
+    nq_rec_t nq;
+    int count_down, timeout, going;
+    char *res;
+
+    nq = query_init(name, name_server, qid);
+    ExceptTry
+    {
+        count_down = RETRY_COUNT;
+        timeout = Time();
+        going = 1;
+        while(going)
+        {
+            if(Time() - timeout >= 0)
+            {
+                timeout = Time() + (name_server ? UCAST_RETRY_TIMEOUT
+                                                : BCAST_RETRY_TIMEOUT);
+                if(count_down--)
+                    query_request(nq);
+                else
+                    going = 0;
+            }
+            if(query_poll(nq))
+                going = 0;
+        }
+    }
+    ExceptCatch
+    {
+#ifdef DIAGNOSTICS
+        printf("Failed: %s\n", ExceptCaught()->errmess);
+#endif
+        query_fin(nq);
+        ExceptRethrow();
+    }
+    res = strdup(nq->result);
+    query_fin(nq);
+    return res;
+}
+
+
+int NetBIOSEncodeName(char *out, char *name)
+{
+    return encode_name(out, name);
+}
+
+char *NetBIOSForceResolve(char *name)
+{
+    char *res, *name_server;
+
+#ifdef DIAGNOSTICS
+    printf("Resolving %s\n", name);
+#endif
+    res = do_query(name, NULL, NAME_QUERY);
+    if(res == NULL)
+    {
+#ifdef DIAGNOSTICS
+        printf("Broadcast of name resolution failed\n");
+#endif
+        name_server = VarRead("LanMan98$NameServer");
+        if(name_server)
+        {
+#ifdef DIAGNOSTICS
+            printf("Trying name server %s\n", name_server);
+#endif
+            ExceptTry
+            {
+                res = do_query(name, name_server, NAME_QUERY);
+            }
+            ExceptCatch
+            {
+                Free(name_server);
+                ExceptRethrow();
+            }
+            Free(name_server);
+        }
+    }
+#ifdef DIAGNOSTICS
+    if(res)
+        printf("%s resolved to %s\n", name, res);
+#endif
+    return res;
+}
+
+char *NetBIOSResolve(char *name)
+{
+    char *res;
+
+    res = NetBIOSForceResolve(name);
+#ifdef DIAGNOSTICS
+    if(res == NULL)
+        printf("Can't resolve %s, trying it as a DNS name\n", name);
+#endif
+    return res ? res : strdup(name);
+}
+
+char *NetBIOSName(char *name, char *addr)
+{
+    char *res;
+
+#ifdef DIAGNOSTICS
+    printf("Broadcasting node status\n");
+#endif
+    res = do_query(name, NULL, NODE_STATUS);
+    if(res == NULL)
+    {
+#ifdef DIAGNOSTICS
+        printf("Failed: sending node status directly to PDC\n");
+#endif
+        res = do_query(name, addr, NODE_STATUS);
+    }
+    return res;
+}

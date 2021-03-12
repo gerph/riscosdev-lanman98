@@ -1,0 +1,59 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Portions Copyright 1996 Warm Silence Software Ltd.
+ */
+
+/******************************************************/
+/*                                                    */
+/* Name: PGwinH.h                                     */
+/* Author: Paul Gardiner.                             */
+/* Function: Hidden structures from PGwin module      */
+/*                                                    */
+/******************************************************/
+
+typedef struct icn_acts_s *icn_acts;
+
+struct win_template_s {int handle;};
+
+struct win_window_s {int handle;
+                     char *title;
+                     win_draw   draw;
+                     win_action click_s;
+                     win_action click_m;
+                     win_action click_a;
+                     win_closing click_c;
+                     win_use_char key;
+                     win_caret caret;
+                     win_select select;
+                     win_load   load;
+                     void      *data;
+                     int        n_icon;
+                     icn_acts   icon_data;
+                     win_window next;};
+
+win_window xyzWINFINDxyz(int);
+
+extern struct redraw_area_s
+{
+  int xmin, ymin, xmax, ymax;
+} xyzREDRAW_AREAxyz;

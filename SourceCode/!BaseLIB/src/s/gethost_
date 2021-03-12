@@ -1,0 +1,44 @@
+;
+; CDDL HEADER START
+;
+; The contents of this file are subject to the terms of the
+; Common Development and Distribution License (the "Licence").
+; You may not use this file except in compliance with the Licence.
+;
+; You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+; or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+; See the Licence for the specific language governing permissions
+; and limitations under the Licence.
+;
+; When distributing Covered Code, include this CDDL HEADER in each
+; file and include the Licence file. If applicable, add the
+; following below this CDDL HEADER, with the fields enclosed by
+; brackets "[]" replaced with your own identifying information:
+; Portions Copyright [yyyy] [name of copyright owner]
+; 
+; CDDL HEADER END
+;
+ 
+; Portions Copyright 1996 Warm Silence Software Ltd. 
+
+	GET h.RegNames
+
+        AREA    |C$$code|, CODE, READONLY
+
+        EXPORT  gethost_
+gethost_
+	; r0 = hostname
+	; r1 = buffer for return code
+	; r2 = buffer for hostent.
+        STMFD	R13!,{R1,R2,R14}
+	SWI	0x46001+(1<<17)	; Resolver_GetHost
+        LDMFD 	R13!,{R2,R3}
+        STR	R0,[R2]		; Put return code into buffer
+        STR	R1,[R3]		; Put hostent into buffer
+	MOVVC	R0,#0		; If no error, return no error
+ [ ATPCS32
+        LDMFD R13!,{PC}
+ |
+        LDMFD R13!,{PC}^
+ ]
+	END

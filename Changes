@@ -1,0 +1,288 @@
+v2.08
+~~~~~
+* All files re-licensed under CDDL Open Source licence
+
+* Username / password in front end UI character limit increased 
+
+* When module registers with OmniClient, it now registers "omni_lm98"
+  sprite rather than !lanman98 so that different art/thene can be used
+  with Omni as compared with standalone front end.
+
+v2.07
+~~~~~
+* RISC OS Developments Open Source release
+
+* RISC OS 5 styled icons used on OS5
+  Old icons included for OS4.x and earlier
+
+
+v2.05/06
+~~~~~~~~
+* List of changes not available / unknown
+
+v2.04
+~~~~~
+* Fix for unaligned access that stopped LanMan98 working with BeagleBoard.
+  (Thanks to Alex Waugh for this, and most other v2.00+ work)
+
+v2.03
+~~~~~
+* Allow IP address to be given after server name in {} in printer server field.
+
+v2.01
+~~~~~
+* More timeout problems solved.
+
+* Add a LanMan98$RawRead system variable to control whether raw reads are used
+  or not (solves problems with badly behaved NAS).
+
+v2.00
+~~~~~
+* Fix timeouts when connecting to Windows Vista.
+
+* Work around several unsupported or buggy features in various NAS servers.
+
+* Implemented support for LM and NTLM encrypted passwords.
+
+* Improved handling of hidden files (They are still hidden from directory
+  enumerations, but they can now be accessed directly by name).
+
+* Changed default filetype to text.
+
+* The frontend now remembers which mount link was loaded, and saves any
+  changes back to it rather than creating a new link.
+
+* Fixed a couple of bugs in the free space display.
+
+* Improved some error messages.
+
+v1.20
+~~~~~
+* Reorder name/name,### search for files that end in ~1 etc, so that I
+  don't lose the file type.  Necessary because Windows allows access
+  to both DOS and full names.
+
+* Avoid NULL indirection in printer code.  Caused crashing when attempting
+  to print to NT with insufficient access.
+
+v1.19
+~~~~~
+* Ignore atributes outside of 0xFF, so to avoid files being copied from
+  NetFS being given random combinations of the properties system, hidden
+  and read only.
+
+v1.18
+~~~~~
+* Connect window provided with option to save the password.
+
+* Printer support avoids creating empty files when RiscOS tests the connection.
+
+* GO back to using TCPIP v4 for support of old machines.
+
+v1.17
+~~~~~
+* Stopped death of the server causing LanMan98 to crash.  It was a bad
+interaction between the reconnection and keepalive mechanisms - now cured.
+Also added code so that once a reconnection attempt fails, then all accesses
+made in the next three seconds fail immediately.  This was needed because the
+Filer asks for file details during redraws, and ignores error returns; hence
+filer redraws could take timeout_period * No_of_files, if it wasn't for this
+fix.
+
+* Made hourglass appear while waiting for replies from the server.
+
+* Made chockblock code work for all versions of RiscOS >= 0xA8.
+
+v1.16
+~~~~~
+* Built with version of FSLIB that prevents the bug that causes copied
+file to get the server's idea of now as their creation time.  Bug reappeared
+because I didn't give him the FSLIB patch.
+
+* 6-char extensions.
+
+* NC excepts OS version above 106
+
+v1.15
+~~~~~
+* Fixed "Broken pipe" when clicking bar icon problem.
+
+* Made Filer icons the right size under RiscOS 3.1
+
+* NC only version for Presedence.
+
+* Fixed bug that made creating hidden files fall over.
+
+v1.14
+~~~~~
+* Partial cure of "Broken pipe" problem.
+
+* Altered parsing of printer file to allow for password with no user, and for
+options.
+
+* RiscOS 4 compatible version of CallBackPatch
+
+* Mimetype support.
+
+* notypes invokable from front end
+
+* notypes shares closed on dismount
+
+v1.13
+~~~~~
+* Made date and time swapping determined by tests on first file
+  accessed. Microsoft can't even be consistent about getting it wrong.
+
+v1.12
+~~~~~
+* Swapped order of date and time in TRANS2_QUERY_PATH_INFO; Oh thank you
+  Microsoft!
+
+* Try set-attr with last-write times for NT, and catch errors from W95, in
+  which case go back to opening and closing the file.
+
+* Linked with version of FSLIB that enables File 0 (Save) to get around
+  date not being set with filer-action copies to NT.  Suspected RiscOS bug.
+
+v1.11
+~~~~~
+* Allow user name and password to be specified within a printer specifier.
+
+* Allow the password to be omitted from the command *LMLogon98
+
+* Send username and password even if the server doesn't ask for it.  Samba
+  needs this.
+
+v1.10
+~~~~~
+* Reimplemented interface to Free module because the change to the FS word
+  made in v1.08 causes OS_FSControl 49 to be disabled.
+
+v1.09
+~~~~~
+* Cured problem with enumeration of empty root directories.
+
+* Permit changing of default file type by setting system variable.
+
+v1.08
+~~~~~
+* Reduced flush delay to 1cs, but allowed 100 failures before giving up.
+
+* Retract claim in FS word that image support is required. This stops the
+  problem with the system heap growing, for some unknown reason.
+
+* Make directory enumeration conform to the defacto standard rather than
+  the PRMs, so that Acorn's broken "Repeat" will work.
+
+v1.07
+~~~~~
+* Implemented raw reads to improve speed.
+
+* Made "notypes" mode show the full file names, including the ,XXX part.
+
+* Fixed the problem with my last attempt at fixing the Fresco problem.
+
+* Changed from using the system variable LanMan98$FrescoPatch to
+  LanMan98$CallBackPatch.
+
+* Made directory enumeration sensitive to the "end of search" flag, rather
+  than waiting for a search that returns no entries.  Hope this gets around
+  a problem with LanMan98 looping on a file called "<7f>".
+
+* All system variables now prefixed by LanMan98 rather than just LanMan
+
+* Reenstated flush delay for "non-specific" error.
+
+v1.06
+~~~~~
+* Allowed for failure of NetBIOS name service socket, due to presence of
+  LanManFS.  Also try broadcast of node status requests.  These two changes
+  make locating of the PDC more likely during domain logon.
+
+* Cut out some rubbish to make the module smaller.
+
+* Made LanMan98 respect the hidden file attribute, unless the system variable
+  LanMan$ShowHidden is set.
+
+* Fixed Fresco problem.
+
+v1.05
+~~~~~
+* Obtain file details via TRANS2_QUERY_PATH_INFORMATION (where possible) to
+  allow access to files within non-readable directories.
+
+* Removed flushing delay for the "Windows 95 is thinking about it" error.
+
+* Stored last-used username and password for each connected server, for reuse
+  as defaults.
+
+* Made all disconnects close the associated filer windows with Filer_CloseDir.
+
+* Ensured that ,XXX is recognised as a RiscOS type only when it is the end of
+  the name.
+
+* Use LanMan$NameServer and LanMan$Scope in place of commands.
+
+* Improved NetBIOS name resolution.  First try broadcast; then try the name
+  server (assuming LanMan$NameServer is set); then try gethostbyname.
+
+* Implemented domain logon, with automatic mounting of the homedir-containing
+  share, and setting of the LanMan$Homedir system variable.
+
+* Fixed a bug in the code for protecting LanMan98 against reentrance.  Also
+  made a version that handles reentrance (but it has strange interference with
+  the WIMP).
+
+* Make length-setting on printer files a null action, rather than throwing an
+  exception.
+
+v1.04
+~~~~~
+* Added HTML and JPEG to the mapping file.
+
+* Corrected flaw in print streaming exception handling.  Caused !Printers to
+  crash if connection failed.
+
+* Decreased maximum size of read to fix SAMBA's tendency to drop the last byte
+  in a maximally sized read.
+
+v1.03
+~~~~~
+* Disconnect98 allows user name without password.
+
+* Errors returned to ShowFree.
+
+* Front end replacement for !Omniclient.
+
+* Remote printing implemented.
+
+v1.02
+~~~~~
+* Simple ARM coded version of longjmp and setjmp used in exception
+  handling and threading.
+
+v1.01
+~~~~~
+* Put CR in place of NL in help strings.
+
+* Stoped SMB error numbers being returned to RiscOS.
+
+* Error 0x01, 0x43 given message.
+
+* "notypes" special field introduced.
+
+* Filer_CloseDir on dismount.
+
+* Corrected bug in file-opening, exception handling.
+
+* Disconnect old connections on reuse of mount name.
+
+* Check for multiple connections to shares.
+
+* Force disconnect of all shares on module finalise.
+
+* Use of Properly allocated SWI chunk and file system number.
+
+v1.00
+~~~~~
+First complete version.

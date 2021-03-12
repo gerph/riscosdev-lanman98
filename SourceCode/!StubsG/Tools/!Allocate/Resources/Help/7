@@ -1,0 +1,12 @@
+About draw objects
+
+Draw object blocks are allocated for applications which implement their own
+objects in draw files.  They are allocated in blocks of &40.  A block is
+allocated to a company, not to an individual product.  A new allocation can
+be requested once a current one has been exhausted.
+
+If a draw object block is required then you will need to ensure that the
+'block required' option is turned on and a description of what it will be
+used for is entered.
+
+To abort this operation you should click SELECT on the 'Cancel' icon.

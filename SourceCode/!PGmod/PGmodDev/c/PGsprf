@@ -1,0 +1,124 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Portions Copyright 1996 Warm Silence Software Ltd.
+ */
+
+/********************************************************************/
+/*                                                                  */
+/* Name: PGsprf.c                                                   */
+/* Author: Paul Gardiner.                                           */
+/* Function: Extension to library of functions for accessing        */
+/* sprites.                                                         */
+/*                                                                  */
+/********************************************************************/
+
+#include "kernel.h"
+#include "swis.h"
+static _kernel_swi_regs regs;
+#include "stdio.h"
+#include "stdlib.h"
+#include "PGerr.h"
+#include "PGmode.h"
+#include "PGflex.h"
+#include "PGspr.h"
+#include "PGsprH.h"
+
+spr_sprite SprCreateF(spr_type st)
+{
+    spr_sprite spr;
+    int area_size;
+    char buf[20];
+
+    area_size = 16 + 44 + st.memory;
+    spr = malloc(sizeof(struct spr_sprite_s));
+    if(!FlexAlloc((void **) &(spr->area), area_size))
+    {
+        free(spr);
+        return NULL;
+    }
+    ((int *) spr->area)[0] = area_size;
+    ((int *) spr->area)[2] = 16;
+    regs.r[0] = 0x109;
+    regs.r[1] = spr->area;
+    _kernel_swi(OS_SpriteOp, &regs, &regs);
+    regs.r[0] = 0x10f;
+    regs.r[1] = spr->area;
+    sprintf(buf, "Sprite%d", 0);
+    regs.r[2] = (int) buf;
+    regs.r[3] = 0;
+    regs.r[4] = st.xsize;
+    regs.r[5] = st.ysize;
+    regs.r[6] = st.mode;
+    _kernel_swi(OS_SpriteOp, &regs, &regs);
+    regs.r[0] = 0x118;
+    regs.r[1] = spr->area;
+    regs.r[2] = (int) buf;
+    _kernel_swi(OS_SpriteOp, &regs, &regs);
+    spr->sprite = regs.r[2] - spr->area;
+    spr->save = NULL;
+    return spr;
+}
+
+spr_sprite SprScreenF(int xorig, int yorig, int xsize, int ysize)
+{
+    spr_type st;
+    int area_size, data_size;
+    spr_sprite spr;
+    
+    st = SprType(ModeGet(), xsize, ysize);
+    area_size = 16 + 44 + st.memory;
+    data_size = sizeof(struct spr_sprite_s);
+    spr = (spr_sprite) malloc(data_size);
+    if(!FlexAlloc((void **) &(spr->area), area_size))
+    {
+        free(spr);
+        return NULL;
+    }
+    ((int *) spr->area)[0] = 16 + 44 + st.memory;
+    ((int *) spr->area)[2] = 16;
+    regs.r[0] = 0x109;
+    regs.r[1] = spr->area;
+    _kernel_swi(OS_SpriteOp, &regs, &regs);
+    regs.r[0] = 0x110;
+    regs.r[1] = spr->area;
+    regs.r[2] = (int) "Sprite0";
+    regs.r[3] = 0;
+    regs.r[4] = xorig;
+    regs.r[5] = yorig;
+    regs.r[6] = xorig + xsize - 1;
+    regs.r[7] = yorig + ysize - 1;
+    _kernel_swi(OS_SpriteOp, &regs, &regs);
+    spr->sprite = regs.r[2] - spr->area;
+    spr->save = NULL;
+    return spr;
+}
+
+void SprFreeF(spr_sprite spr)
+{
+    if(spr != NULL)
+    {
+        free((void *) spr->save);
+        FlexFree((void **) &(spr->area));
+        free(spr);
+    }
+}

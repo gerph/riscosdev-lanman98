@@ -1,0 +1,21 @@
+2.08  Re-licensed each file under CDDL where applicable
+
+      Adjusted templates for Connect box user/password string length
+      
+      When registering with OmniClient, now uses sprite name omni_lm98
+      to allow for distinct icon gfx when used with omni vs standalone
+
+
+2.07  Removed demo and 26bit build targets as StubsG (used by WSS)
+      allows for 26/32bit compatibility in one executable
+      
+      Memcheck references commented out in various sources
+      
+      Changed user string to reflect non-commercial, open source status
+      
+      Targets saved to !LanMan98 rather than !InstLM98
+      
+      Adjusted templates for Info box string length
+      
+      Adjusted (c) to reflect change in status
+            

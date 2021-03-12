@@ -1,0 +1,13 @@
+About SWI Chunks
+
+SWI Chunks are allocated to third parties who have developed modules that
+require SWI numbers for system extensions.  They are allocated in blocks of
+64 (&40) and are given on a one-per-module basis.
+
+If a SWI Chunk is required, you will need to enter a prefix for the SWI Chunk
+and a description of what it will be used for.
+
+To add the allocation to the list you will need to click SELECT on the 'Add'
+icon.
+
+To abort this operation you should click SELECT on the 'Cancel' icon.

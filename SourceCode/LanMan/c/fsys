@@ -1,0 +1,1393 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+ 
+/*   PHBG 7/10/96: Initial version
+ */
+
+// #include "MemCheck:MemCheck.h"
+#include <string.h>
+#include <stdio.h>
+#include <ctype.h>
+#include "swis.h"
+#include "strext.h"
+#include "memory.h"
+#include "error.h"
+#include "time.h"
+#include "callback.h"
+#include "blocked.h"
+#include "thread.h"
+#include "fsys_err.h"
+#include "fspatch.h"
+#include "date.h"
+#include "var.h"
+#include "mapping.h"
+#include "logon.h"
+#include "netbios.h"
+#include "smb.h"
+#include "vc.h"
+#include "smbsvr.h"
+#include "printer.h"
+#include "nodebug.h"
+
+#include "fsys.h"
+#include "mount.h"
+
+#define MAX_SERVER_NAME_LEN (20)
+#define BLOCK_SIZE (512)
+#define KEEPALIVE_PERIOD (10000)
+
+struct fsys_image_s
+{
+    smb_server_t smb_server;
+    thread_t keepalive;
+    int store_file_types;
+    int respect_hidden;
+    int bad_reconnect;
+    int reconnect_time;
+};
+
+struct fsys_object_s
+{
+    smb_obj_t smb_obj;
+    int refs;
+    int dirty;
+    int ro_type;
+    char *ro_name;
+    fsys_image_t img;
+};
+
+struct fsys_handle_s
+{
+    int is_printer;
+    int fd;
+    smb_handle_t smb_handle;
+    fsys_object_t obj;
+};
+
+char *FsysFSName = "LanMan98";
+
+int   FsysFSNumber = 156;
+
+//int   FsysFlags = (FSYS_FLAG_SPECIAL_FIELDS | FSYS_FLAG_IMAGE_FILES | FSYS_FLAG_NULL_PATHS);
+int   FsysFlags = (int)(FSYS_FLAG_SPECIAL_FIELDS | FSYS_FLAG_NULL_PATHS);
+
+char *FsysStartText = "LanMan98 starting";
+
+fsys_image_t FsysImageFromFileHandle(int x)
+{
+    Error("Not an image filing system");
+    return NULL;
+}
+
+
+#if 1
+static void show_error(int *id, char *tag, _kernel_oserror *err)
+{
+    static char buf[32];
+
+    sprintf(buf, "LanMan98$%sError%d", tag, (*id)++);
+    VarSet(buf, err->errmess);
+}
+#endif
+
+void FsysShut(void)
+{
+    mount_t mt;
+
+    PrinterCloseAll();
+    while((mt = FsysNthMount(0)) != NULL)
+        FsysDismount(mt);
+}
+
+
+
+struct mount_s
+{
+    int full_address;
+    char *name;
+    char *addr;
+    char *server;
+    char *path;
+    char *share;
+    char *user;
+    char *passwd;
+    fsys_image_t img;
+    mount_t link;
+};
+
+static fsys_image_t user_of_file_descriptor[256] = {NULL};
+
+static void close_all_open_files(fsys_image_t img)
+{
+    int i;
+
+    for(i = 1; i <256; i++)
+        if(user_of_file_descriptor[i] == img)
+            _swix(OS_Find, _IN(0)|_IN(1), 0, i);
+}
+
+static mount_t mounts = NULL;
+
+static mount_t mount(void)
+{
+    mount_t ml;
+
+    ml = Malloc(sizeof(*ml));
+    memset(ml, 0, sizeof(*ml));
+    return ml;
+}
+
+static void mount_destruct(mount_t ml)
+{
+    static char buf[80];
+
+    sprintf(buf, "Filer_CloseDir LanMan98::%s.$", ml->name);
+    _kernel_oscli(buf);
+    sprintf(buf, "Filer_CloseDir LanMan98#notypes::%s.$", ml->name);
+    _kernel_oscli(buf);
+    if(ml->name) Free(ml->name);
+    if(ml->addr) Free(ml->addr);
+    if(ml->server) Free(ml->server);
+    if(ml->path) Free(ml->path);
+    if(ml->share) Free(ml->share);
+    if(ml->user) Free(ml->user);
+    if(ml->passwd) Free(ml->passwd);
+    if(ml->img)
+    {
+        close_all_open_files(ml->img);
+        FsPatchDropCaches();
+        FsysKillImage(ml->img);
+    }
+    Free(ml);
+}
+
+static void check_not_already_mounted(char *server, char *path)
+{
+    mount_t m;
+
+    for(m = mounts; m; m = m->link)
+        if(ci_strcmp(m->server, server) == 0 && ci_strcmp(m->path, path) == 0)
+            Error("Already connected to this share on this server");
+}
+
+
+fsys_image_t FsysImageFromDiscName(char *disc, char *special)
+{
+    if(disc)
+    {
+        mount_t m;
+
+        for(m = mounts; m; m = m->link)
+        {
+            if(ci_strcmp(m->name, disc) == 0)
+            {
+                if(special == NULL || *special == 0)
+                    m->img->store_file_types = 1;
+                else if(ci_strcmp(special, "notypes") == 0)
+                    m->img->store_file_types = 0;
+                else
+                    ErrorNum(ERR_DiscNotFound);
+                return m->img;
+            }
+        }
+        ErrorNum(ERR_DiscNotFound);
+        return NULL;
+    }
+    else
+    {
+        return PrinterImageFromSpecialField(special);
+    }
+}
+
+static int in_use = 0;
+
+static void keepalive(mount_t mt)
+{
+    mount_t m;
+    fsys_image_t img;
+    static int id = 0;
+
+    ExceptTry
+    {
+        if(in_use)
+        {
+            CallBackAfter((void (*)(void *))keepalive, mt, KEEPALIVE_PERIOD);
+        }
+        else
+        {
+            img = NULL;
+            for(m = mounts; m; m = m->link)
+                if(mt == m)
+                    img = m->img;
+            if(img)
+            {
+                if(img->keepalive == NULL)
+                {
+                    img->keepalive = Thread((void (*)(void *))SMBKeepAlive, img->smb_server);
+                }
+                if(ThreadRipe(img->keepalive))
+                {
+                    ThreadService(img->keepalive);
+                }
+                if(ThreadHasCompleted(img->keepalive))
+                {
+                    ExceptTry
+                    {
+                        ThreadThrowError(img->keepalive);
+                    }
+                    ExceptCatch
+                    {
+                        int errnum;
+
+                        errnum = ExceptCaught()->errnum;
+                        if(errnum != 0x10002 && errnum != 0x10003)
+                        {
+                            SMBFlushLine(img->smb_server);
+                        }
+                    }
+                    ThreadDestruct(img->keepalive);
+                    img->keepalive = NULL;
+                }
+                CallBackAfter((void (*)(void *))keepalive, mt, img->keepalive == NULL
+                                                                   ? KEEPALIVE_PERIOD
+                                                                   : 1);
+            }
+        }
+    } ExceptCatch {show_error(&id, "KeepAlive", ExceptCaught());}
+}
+
+static void finish_keepalive(fsys_image_t img)
+{
+    PrinterImageRefuse(img, 1);
+    if(img->keepalive)
+    {
+        while(!ThreadHasCompleted(img->keepalive))
+        {
+            BlockedWait();
+            if(ThreadRipe(img->keepalive))
+            {
+                ThreadService(img->keepalive);
+            }
+        }
+        ExceptTry
+        {
+            ThreadThrowError(img->keepalive);
+        }
+        ExceptCatch
+        {
+            int errnum;
+
+            errnum = ExceptCaught()->errnum;
+            if(errnum != 0x10002 && errnum != 0x10003)
+            {
+                SMBFlushLine(img->smb_server);
+            }
+        }
+        ThreadDestruct(img->keepalive);
+        img->keepalive = NULL;
+    }
+}
+
+static void reconnect(fsys_image_t img)
+{
+    mount_t mt;
+
+    if(img)
+    {
+        for(mt = mounts; mt && mt->img != img; mt = mt->link)
+            ;
+        if(mt)
+        {
+            close_all_open_files(mt->img);
+            FsPatchDropCaches();
+            if(mt->img->keepalive)
+            {
+                ThreadDestruct(mt->img->keepalive);
+                mt->img->keepalive = NULL;
+            }
+            if(mt->img->smb_server)
+            {
+                SMBReconnect(mt->img->smb_server, mt->addr,
+                                                 139,
+                                                 mt->server,
+                                                 mt->share,
+                                                 mt->user,
+                                                 mt->passwd);
+            }
+            else
+            {
+                mt->img->smb_server = SMBConnect(mt->addr,
+                                                 139,
+                                                 mt->server,
+                                                 mt->share,
+                                                 mt->user,
+                                                 mt->passwd);
+            }
+            mt->img->bad_reconnect = 0;
+            CallBackAfter((void (*)(void *))keepalive, mt, KEEPALIVE_PERIOD);
+        }
+    }
+}
+
+static int read3hex(char *p)
+{
+    int i, n;
+
+    n = 0;
+    for(i = 0; i < 3; i++)
+    {
+        n <<= 4;
+        switch(p[i])
+        {
+            case '0': break;
+            case '1': n += 0x1; break;
+            case '2': n += 0x2; break;
+            case '3': n += 0x3; break;
+            case '4': n += 0x4; break;
+            case '5': n += 0x5; break;
+            case '6': n += 0x6; break;
+            case '7': n += 0x7; break;
+            case '8': n += 0x8; break;
+            case '9': n += 0x9; break;
+            case 'a': n += 0xa; break;
+            case 'b': n += 0xb; break;
+            case 'c': n += 0xc; break;
+            case 'd': n += 0xd; break;
+            case 'e': n += 0xe; break;
+            case 'f': n += 0xf; break;
+            default: return -1;
+        }
+    }
+    return p[i] == 0 ? n : -1;
+}
+
+static int name2type(char *name)
+{
+    int type;
+    char *p;
+
+    type = -1;
+    p = strrchr(name, ',');
+    if(p)
+        type = read3hex(p+1);
+    if(type == -1)
+    {
+        p = strrchr(name, '/');
+        type = MapApply(p ? p+1 : NULL);
+    }
+    return type;
+}
+
+static char *full_name(char *name, int type)
+{
+    char *p, *res;
+
+    p = strrchr(name, '/');
+    if(type == MapApply(p ? p+1 : NULL))
+    {
+        res = strdup(name);
+    }
+    else
+    {
+        res = Malloc(strlen(name) + 5);
+        sprintf(res, "%s,%03x", name, type);
+    }
+    return res;
+}
+
+static char *drop_ext(char *name)
+{
+    char *p, *res;
+    int len;
+
+    p = strrchr(name, ',');
+    if(p && read3hex(p+1) != -1)
+    {
+        len = p-name;
+        res = Malloc(len+1);
+        memcpy(res, name, len);
+        res[len] = 0;
+    }
+    else
+    {
+        res = strdup(name);
+    }
+    return res;
+}
+
+static int has_ext(char *name)
+{
+    char *p;
+
+    p = strrchr(name, ',');
+    return p && read3hex(p+1) != -1;
+}
+
+void FsysEnter(void)
+{
+    static _kernel_oserror reent_err = {0x100A0, "LanMan98 in use"};
+
+    if(in_use)
+        ErrorErr(&reent_err);
+    in_use = 1;
+}
+
+void FsysLeave(void)
+{
+    in_use = 0;
+}
+
+mount_t FsysFindMount(char *name)
+{
+    mount_t m;
+
+    for(m = mounts; m; m = m->link)
+        if(ci_strcmp(m->name, name) == 0)
+            return m;
+    return NULL;
+}
+
+mount_t FsysNthMount(int i)
+{
+    mount_t m;
+
+    for(m = mounts; m; m = m->link)
+        if(i-- == 0)
+            return m;
+    return NULL;
+}
+
+mount_t FsysMount(char *name, char *server_addr, char *path, char *user, char *passwd)
+{
+    mount_t mt;
+    char *addr;
+    int l;
+    char server[MAX_SERVER_NAME_LEN+1];
+
+    // split up server name and addr
+    addr = strchr(server_addr, '<');
+    if(addr && addr[strlen(addr)-1] != '>')
+        Error("Incorrectly specified server IP address.  Put the IP address in angle brackets after the NetBIOS name.");
+    l = addr ? addr - server_addr : strlen(server_addr);
+    if(l > MAX_SERVER_NAME_LEN)
+        Error("Server names are never that long");
+    memcpy(server, server_addr, l);
+    server[l] = 0;
+
+    user = user ? user : "";
+    passwd = passwd ? passwd : "";
+    if(*user == 0 && *passwd == 0)
+    {
+        user = LoggedOnUser(server);
+        passwd = LoggedOnPassword(server);
+    }
+    mt = FsysFindMount(name);
+    if(mt) FsysDismount(mt);
+    mt = mount();
+    ExceptTry
+    {
+        mt->name = strdup(name);
+        mt->server = strdup(server);
+        mt->path = strdup(path);
+        mt->user = strdup(user);
+        mt->passwd = strdup(passwd);
+        if(addr)
+        {
+            // Remove <>s from addr while copying it
+            mt->addr = strdup(addr+1);
+            mt->addr[strlen(mt->addr)-1] = 0;
+            mt->full_address = 1;
+        }
+        else
+        {
+            mt->addr = NetBIOSResolve(mt->server);
+        }
+        check_not_already_mounted(mt->server, mt->path);
+        mt->share = Malloc(strlen(mt->server) + strlen(mt->path) + 4);
+        sprintf(mt->share, "\\\\%s\\%s", mt->server, mt->path);
+        mt->img = Malloc(sizeof(*mt->img));
+        memset(mt->img, 0, sizeof(*mt->img));
+        mt->img->store_file_types = 1;
+        {
+            char *hvar;
+
+            hvar = VarRead("LanMan98$ShowHidden");
+            mt->img->respect_hidden = (hvar == NULL);
+            Free(hvar);
+        }
+        mt->img->smb_server = SMBConnect(mt->addr,
+                                         139,
+                                         mt->server,
+                                         mt->share,
+                                         mt->user,
+                                         mt->passwd);
+        CallBackAfter((void (*)(void *))keepalive, mt, KEEPALIVE_PERIOD);
+    }
+    ExceptCatch
+    {
+        mount_destruct(mt);
+        ExceptRethrow();
+    }
+    mt->link = mounts;
+    mounts = mt;
+    LogMount(mt->server, mt->user, mt->passwd);
+    return mt;
+}
+
+void FsysDismount(mount_t mt)
+{
+    mount_t *p;
+
+    p = &mounts;
+    while(*p)
+    {
+        if(*p == mt)
+        {
+            *p = (*p)->link;
+            LogDismount(mt->server);
+            mount_destruct(mt);
+        }
+        else
+        {
+            p = &(*p)->link;
+        }
+    }
+    if(mounts == NULL)
+        ThreadLibraryFinalise();
+}
+
+char *FsysMountName(mount_t mt)
+{
+    mount_t m;
+
+    for(m = mounts; m; m = m->link)
+        if(mt == m)
+            return m->name;
+    return NULL;
+}
+
+char *FsysMountServer(mount_t mt)
+{
+    mount_t m;
+    static char buf[512];
+
+    for(m = mounts; m; m = m->link)
+    {
+        if(mt == m)
+        {
+            if(m->full_address && strlen(m->server) + strlen(m->addr) + 3 <= 512)
+            {
+                sprintf(buf, "%s<%s>", m->server, m->addr);
+                return buf;
+            }
+            else
+            {
+                return m->server;
+            }
+        }
+    }
+    return NULL;
+}
+
+char *FsysMountPath(mount_t mt)
+{
+    mount_t m;
+
+    for(m = mounts; m; m = m->link)
+        if(mt == m)
+            return m->path;
+    return NULL;
+}
+
+char *FsysMountUser(mount_t mt)
+{
+    mount_t m;
+
+    for(m = mounts; m; m = m->link)
+        if(mt == m)
+            return m->user;
+    return NULL;
+}
+
+void FsysKillImage(fsys_image_t img)
+{
+    PrinterImageRefuse(img, 2);
+    finish_keepalive(img);
+    if(img->smb_server) SMBDropServer(img->smb_server);
+    if(img->keepalive) ThreadDestruct(img->keepalive);
+    Free(img);
+}
+
+void FsysStamp(fsys_image_t img, int now)
+{
+    PrinterImageRefuse(img, 3);
+}
+
+void FsysFlushImage(fsys_image_t img)
+{
+    PrinterImageRefuse(img, 4);
+}
+
+static void mul32x32_to_64(unsigned int x, unsigned int y, int64 *res)
+{
+    unsigned int ll, lh, hl, hh;
+
+    ll = (x & 0xffff) * (y & 0xffff);
+    lh = (x & 0xffff) * (y >> 16);
+    hl = (x >> 16) * (y & 0xffff);
+    hh = (x >> 16) * (y >> 16);
+    res->high = hh + (lh >> 16) + (hl >> 16);
+    hl = (hl & 0xffff) + (lh & 0xffff) + (ll >> 16);
+    res->high += (hl >> 16);
+    res->low = (hl << 16) | (ll & 0xffff);
+}
+
+void FsysSpace(fsys_image_t img, int64 *total, int64 *free)
+{
+    smb_disc_info_t dinfo;
+
+    PrinterImageRefuse(img, 5);
+    finish_keepalive(img);
+    SMBDiskInfo(img->smb_server, &dinfo);
+    mul32x32_to_64(dinfo.units, dinfo.free, free);
+    mul32x32_to_64(dinfo.units, dinfo.total, total);
+}
+
+char *FsysGetDiscName(fsys_image_t img)
+{
+    PrinterImageRefuse(img, 6);
+    return "";
+}
+
+void FsysSetDiscName(fsys_image_t img, char *name)
+{
+    PrinterImageRefuse(img, 7);
+}
+
+char *FsysDiscType(fsys_image_t img)
+{
+    PrinterImageRefuse(img, 8);
+    return "CIFS";
+}
+
+int FsysDiscCycleId(fsys_image_t img)
+{
+    PrinterImageRefuse(img, 9);
+    return 0;
+}
+
+
+char *FsysNameMap(char *name, fsys_image_t img)
+{
+    PrinterImageRefuse(img, 10);
+    return SMBNameMap(name, img->smb_server);
+}
+
+
+fsys_object_t FsysCreateFile(fsys_object_t obj, char *name)
+{
+    fsys_object_t nobj;
+
+    PrinterObjectRefuse(obj, 1);
+    finish_keepalive(obj->img);
+    nobj = Malloc(sizeof(*nobj));
+    nobj->ro_name = NULL;
+    nobj->ro_type = name2type(name);
+    nobj->dirty = 1;
+    nobj->refs = 1;
+    nobj->smb_obj = NULL;
+    nobj->img = obj->img;
+    ExceptTry
+    {
+        nobj->smb_obj = SMBCreateFile(obj->smb_obj, name);
+    }
+    ExceptCatch
+    {
+        FsysFree(nobj);
+        ExceptRethrow();
+    }
+    return nobj;
+}
+
+fsys_object_t FsysCreateDirectory(fsys_object_t obj, char *name)
+{
+    fsys_object_t nobj;
+
+    PrinterObjectRefuse(obj, 2);
+    finish_keepalive(obj->img);
+    nobj = Malloc(sizeof(*nobj));
+    nobj->ro_name = NULL;
+    nobj->ro_type = name2type(name);
+    nobj->dirty = 1;
+    nobj->refs = 1;
+    nobj->smb_obj = NULL;
+    nobj->img = obj->img;
+    ExceptTry
+    {
+        nobj->smb_obj = SMBCreateDirectory(obj->smb_obj, name);
+    }
+    ExceptCatch
+    {
+        FsysFree(nobj);
+        ExceptRethrow();
+    }
+    return nobj;
+}
+
+void FsysRename(fsys_object_t obj, char *name)
+{
+    char *ext_name;
+
+    PrinterObjectRefuse(obj, 3);
+    finish_keepalive(obj->img);
+    if(obj->ro_name)
+    {
+        Free(obj->ro_name);
+        obj->ro_name = NULL;
+    }
+    DEBUG_PRINT1("Store types: %d", obj->img->store_file_types);
+    DEBUG_PRINT1("Name: %s", name);
+    DEBUG_PRINT1("RO type: 0x%03x", obj->ro_type);
+
+    ext_name = obj->img->store_file_types
+                    ? full_name(name, obj->ro_type)
+                    : strdup(name);
+    DEBUG_PRINT1("%s", ext_name);
+    ExceptTry
+    {
+        SMBRename(obj->smb_obj, ext_name);
+    }
+    ExceptCatch
+    {
+        Free(ext_name);
+        ExceptRethrow();
+    }
+    Free(ext_name);
+}
+
+void FsysMove(fsys_object_t obj1, fsys_object_t obj2)
+{
+    PrinterObjectRefuse(obj1, 4);
+    PrinterObjectRefuse(obj2, 5);
+    finish_keepalive(obj1->img);
+    SMBMove(obj1->smb_obj, obj2->smb_obj);
+}
+
+void FsysDelete(fsys_object_t obj)
+{
+    PrinterObjectRefuse(obj, 6);
+    finish_keepalive(obj->img);
+    SMBDelete(obj->smb_obj);
+}
+
+static int hidden(fsys_object_t obj)
+{
+    return obj->img->respect_hidden && (SMBGetAttributes(obj->smb_obj) & SMB_HIDDEN);
+}
+
+static int looks_like_a_dos_name(char *name)
+{
+    char *p;
+
+    DEBUG_PRINT1("Name = %s", name);
+    /* See if there's a ~ */
+    p = strrchr(name, '~');
+
+    /* If not, its noe a DOS name */
+    if(p == NULL)
+        return 0;
+
+    /* Jump over ~ and check the rest is digits */
+    for(p++; *p; p++)
+        if(!isdigit(*p))
+            return 0;
+
+    return 1;
+}
+
+static void extension_search(path_t path, fsys_object_t obj)
+{
+    if (obj->img->smb_server->nas_basic_firmware)
+    {
+        /* This firmware does not support wildcards in the search other than
+           a leaf of exactly "*", so we must search the entire directory */
+        char *leaf = path->tok[path->ntok - 1];
+        int len = strlen(leaf);
+
+        path->tok[path->ntok - 1] = "";
+
+        ExceptTry
+        {
+            obj->smb_obj = SMBPath2Obj(path, obj->img->smb_server, "*");
+            while(obj->smb_obj)
+            {
+                char *name = SMBGetName(obj->smb_obj);
+                if (has_ext(name) && (strlen(name) == (len + 4)) && (strncmp(name, leaf, len) == 0))
+                    break;
+                obj->smb_obj = SMBNext(obj->smb_obj);
+            }
+        }
+        ExceptCatch
+        {
+            path->tok[path->ntok - 1] = leaf;
+            ExceptRethrow();
+        }
+        path->tok[path->ntok - 1] = leaf;
+    }
+    else
+    {
+        obj->smb_obj = SMBPath2Obj(path, obj->img->smb_server, ",###");
+        while(obj->smb_obj && !has_ext(SMBGetName(obj->smb_obj)))
+            obj->smb_obj = SMBNext(obj->smb_obj);
+    }
+}
+
+static fsys_object_t fsys_path2object(path_t path, fsys_image_t img)
+{
+    fsys_object_t obj;
+    int errnum;
+
+    obj = Malloc(sizeof(*obj));
+    obj->refs = 1;
+    obj->ro_name = NULL;
+    obj->smb_obj = NULL;
+    obj->img = img;
+    ExceptTry
+    {
+        if(path->ntok > 1)
+        {
+            if(looks_like_a_dos_name(path->tok[path->ntok-1]))
+            {
+               /*
+                * Stupid Windows might give us the DOS name, and cause us
+                * to miss the full name with ,xxx extension.  So we are
+                * forced to do the slow directory enumeration first.
+                */
+                DEBUG_PRINT0("Looks like DOS");
+                ExceptTry
+                {
+                    if(obj->smb_obj == NULL && obj->img->store_file_types)
+                    {
+                        extension_search(path, obj);
+                    }
+                }
+                ExceptCatch
+                {
+                    errnum = ExceptCaught()->errnum;
+                    if(errnum != 0x10002 && errnum != 0x10003)
+                        ExceptRethrow();
+                }
+                if(obj->smb_obj == NULL)
+                    obj->smb_obj = SMBPath2Obj(path, img->smb_server, "");
+            }
+            else
+            {
+               /*
+                * No way is this a DOS name, so its safe to do the fast
+                * direct request for the file.
+                */
+                DEBUG_PRINT0("Looks like non-DOS");
+                ExceptTry
+                {
+                    obj->smb_obj = SMBPath2Obj(path, img->smb_server, "");
+                }
+                ExceptCatch
+                {
+                    errnum = ExceptCaught()->errnum;
+                    if(errnum != 0x10002 && errnum != 0x10003)
+                        ExceptRethrow();
+                }
+                if(obj->smb_obj == NULL && obj->img->store_file_types)
+                {
+                    extension_search(path, obj);
+                }
+            }
+        }
+        else
+        {
+            SMBKeepAlive(img->smb_server);
+            obj->smb_obj = SMBRoot(img->smb_server);
+            obj->ro_type = 0xFFD;
+            obj->dirty = 0;
+        }
+        if(obj->smb_obj == NULL)
+        {
+            FsysFree(obj);
+            obj = NULL;
+        }
+        else
+        {
+            obj->ro_type = name2type(SMBGetName(obj->smb_obj));
+            obj->dirty = 0;
+        }
+    }
+    ExceptCatch
+    {
+        FsysFree(obj);
+        obj = NULL;
+        errnum = ExceptCaught()->errnum;
+        if(errnum != 0x10002 && errnum != 0x10003)
+        {
+            // show_error(&id, "Get", ExceptCaught());
+            ExceptRethrow();
+        }
+    }
+    return obj;
+}
+
+fsys_object_t FsysPath2Object(path_t path, fsys_image_t img)
+{
+    fsys_object_t res;
+
+    if(PrinterClaimsImage(img))
+        return PrinterPath2Object(path, img);
+    finish_keepalive(img);
+
+    if(img->bad_reconnect && Time() - img->reconnect_time < 300)
+        Error("Connection down");
+    ExceptTry
+    {
+        res = fsys_path2object(path, img);
+    }
+    ExceptCatch
+    {
+        ExceptTry
+        {
+            reconnect(img);
+            res = fsys_path2object(path, img);
+        }
+        ExceptCatch
+        {
+            img->bad_reconnect = 1;
+            img->reconnect_time = Time();
+            ExceptRethrow();
+        }
+    }
+    img->bad_reconnect = 0;
+    return res;
+}
+
+fsys_object_t FsysImgRoot(fsys_image_t img)
+{
+    fsys_object_t obj;
+
+    PrinterImageRefuse(img, 11);
+    finish_keepalive(img);
+    obj = Malloc(sizeof(*obj));
+    obj->refs = 1;
+    obj->ro_name = NULL;
+    obj->smb_obj = SMBRoot(img->smb_server);
+    obj->ro_type = 0xFFD;
+    obj->dirty = 0;
+    obj->img = img;
+    return obj;
+}
+
+static int dots(fsys_object_t obj)
+{
+    char *s;
+
+    s = SMBGetName(obj->smb_obj);
+    return strcmp(s, "/") == 0 || strcmp(s, "//") == 0;
+}
+
+fsys_object_t FsysIn(fsys_object_t obj)
+{
+    PrinterObjectRefuse(obj, 7);
+    finish_keepalive(obj->img);
+    if(obj->ro_name)
+    {
+        Free(obj->ro_name);
+        obj->ro_name = NULL;
+    }
+    obj->smb_obj = SMBIn(obj->smb_obj);
+    while(obj->smb_obj && (dots(obj)||hidden(obj)))
+        obj->smb_obj = SMBNext(obj->smb_obj);
+    if(obj->smb_obj)
+    {
+        obj->dirty = 0;
+        obj->ro_type = name2type(SMBGetName(obj->smb_obj));
+        return obj;
+    }
+    else
+    {
+        FsysFree(obj);
+        return NULL;
+    }
+}
+
+fsys_object_t FsysNext(fsys_object_t obj)
+{
+    PrinterObjectRefuse(obj, 8);
+    finish_keepalive(obj->img);
+    if(obj->ro_name)
+    {
+        Free(obj->ro_name);
+        obj->ro_name = NULL;
+    }
+    obj->smb_obj = SMBNext(obj->smb_obj);
+    while(obj->smb_obj && (dots(obj)||hidden(obj)))
+        obj->smb_obj = SMBNext(obj->smb_obj);
+    if(obj->smb_obj)
+    {
+        obj->dirty = 0;
+        obj->ro_type = name2type(SMBGetName(obj->smb_obj));
+        return obj;
+    }
+    else
+    {
+        FsysFree(obj);
+        return NULL;
+    }
+}
+
+fsys_object_t FsysDup(fsys_object_t obj)
+{
+    fsys_object_t nobj;
+
+    if(PrinterClaimsObject(obj))
+        return obj;
+    nobj = Malloc(sizeof(*nobj));
+    nobj->refs = 1;
+    nobj->ro_name = NULL;
+    nobj->smb_obj = obj->smb_obj ? SMBObjDup(obj->smb_obj) : NULL;
+    nobj->dirty = 0;
+    nobj->ro_type = name2type(SMBGetName(obj->smb_obj));
+    nobj->img = obj->img;
+    return nobj;
+}
+
+fsys_object_t FsysNewRef(fsys_object_t obj)
+{
+    if(PrinterClaimsObject(obj))
+        return obj;
+    ++(obj->refs);
+    return obj;
+}
+
+void FsysFree(fsys_object_t obj)
+{
+    if(PrinterClaimsObject(obj))
+        return;
+    finish_keepalive(obj->img);
+    if(--(obj->refs) == 0)
+    {
+        if(obj->ro_name)
+            Free(obj->ro_name);
+        if(obj->smb_obj)
+            SMBObjDestruct(obj->smb_obj);
+        Free(obj);
+    }
+}
+
+
+
+char *FsysGetName(fsys_object_t obj)
+{
+    PrinterObjectRefuse(obj, 9);
+    finish_keepalive(obj->img);
+    if(obj->ro_name == NULL)
+        obj->ro_name = obj->img->store_file_types
+                            ? drop_ext(SMBGetName(obj->smb_obj))
+                            : strdup(SMBGetName(obj->smb_obj));
+    return obj->ro_name;
+}
+
+int FsysGetLength(fsys_object_t obj)
+{
+    if(PrinterClaimsObject(obj))
+        return 0;
+    finish_keepalive(obj->img);
+    return SMBGetLength(obj->smb_obj);
+}
+
+void FsysSetLength(fsys_object_t obj, int l)
+{
+    if(PrinterClaimsObject(obj))
+        return;
+    // PrinterObjectRefuse(obj, 10);
+    finish_keepalive(obj->img);
+    SMBSetLength(obj->smb_obj, l);
+}
+
+int FsysGetLoadAddr(fsys_object_t obj)
+{
+    int arc[2];
+
+    if(PrinterClaimsObject(obj))
+        return (int)0xFFFFFF00;
+    finish_keepalive(obj->img);
+    DateSMBtoARC(SMBGetTime(obj->smb_obj), arc);
+    return 0xFFF00000 | (obj->ro_type << 8) | arc[1];
+}
+
+void FsysSetLoadAddr(fsys_object_t obj, int laddr)
+{
+    int arc[2];
+
+    PrinterObjectRefuse(obj, 11);
+    finish_keepalive(obj->img);
+    if((laddr & 0xFFF00000) == 0xFFF00000)
+    {
+        DateSMBtoARC(SMBGetTime(obj->smb_obj), arc);
+        arc[1] = (laddr & 0xFF);
+        SMBSetTime(obj->smb_obj, DateARCtoSMB(arc));
+        obj->ro_type = ((laddr >> 8) & 0xFFF);
+        obj->dirty = 1;
+    }
+}
+
+int FsysGetExecAddr(fsys_object_t obj)
+{
+    int arc[2];
+
+    if(PrinterClaimsObject(obj))
+        return 0;
+    finish_keepalive(obj->img);
+    DateSMBtoARC(SMBGetTime(obj->smb_obj), arc);
+    return arc[0];
+}
+
+void FsysSetExecAddr(fsys_object_t obj, int eaddr)
+{
+    int arc[2];
+
+    PrinterObjectRefuse(obj, 12);
+    finish_keepalive(obj->img);
+    DateSMBtoARC(SMBGetTime(obj->smb_obj), arc);
+    arc[0] = eaddr;
+    SMBSetTime(obj->smb_obj, DateARCtoSMB(arc));
+}
+
+int FsysGetAttributes(fsys_object_t obj)
+{
+    int attrs, dos_attrs;
+
+    if(PrinterClaimsObject(obj))
+        return FSYS_READ | FSYS_WRITE;
+    finish_keepalive(obj->img);
+    dos_attrs = SMBGetAttributes(obj->smb_obj);
+    attrs = 3;
+    if(dos_attrs & SMB_READONLY)
+    {
+        attrs |= 0x008;
+        attrs &= ~0x002;
+    }
+    if(dos_attrs & SMB_HIDDEN) attrs |= 0x100;
+    if(dos_attrs & SMB_SYSTEM) attrs |= 0x200;
+    if(dos_attrs & SMB_ARCHIVE) attrs |= 0x400;
+    return attrs;
+}
+
+void FsysSetAttributes(fsys_object_t obj, int att)
+{
+    int dattr;
+
+    PrinterObjectRefuse(obj, 13);
+    finish_keepalive(obj->img);
+    dattr = (SMBGetAttributes(obj->smb_obj) & SMB_SUBDIR);
+    if(att & 0x008) dattr |= SMB_READONLY;
+    /*
+    if(att & 0x100) dattr |= SMB_HIDDEN;
+    if(att & 0x200) dattr |= SMB_SYSTEM;
+    if(att & 0x400) dattr |= SMB_ARCHIVE;
+    */
+    SMBSetAttributes(obj->smb_obj, dattr);
+}
+
+int FsysGetType(fsys_object_t obj)
+{
+    if(PrinterClaimsObject(obj))
+        return FSYS_FILE;
+    finish_keepalive(obj->img);
+    return SMBGetAttributes(obj->smb_obj) & SMB_SUBDIR
+                 ? FSYS_DIRECTORY
+                 : FSYS_FILE;
+}
+
+int FsysGetBlockSize(fsys_object_t obj)
+{
+    return BLOCK_SIZE;
+}
+
+void FsysFlushObject(fsys_object_t obj)
+{
+    if(PrinterClaimsObject(obj))
+        return;
+    finish_keepalive(obj->img);
+    if(obj->dirty && (SMBGetAttributes(obj->smb_obj) & SMB_SUBDIR) == 0)
+    {
+        if(obj->img->store_file_types && obj->ro_type != name2type(SMBGetName(obj->smb_obj)))
+        {
+            char *ext_name, *name;
+
+            name = obj->img->store_file_types
+                        ? drop_ext(SMBGetName(obj->smb_obj))
+                        : strdup(SMBGetName(obj->smb_obj));
+            ExceptTry
+            {
+                ext_name = full_name(name, obj->ro_type);
+            }
+            ExceptCatch
+            {
+                Free(name);
+                ExceptRethrow();
+            }
+            Free(name);
+            ExceptTry
+            {
+                SMBRename(obj->smb_obj, ext_name);
+            }
+            ExceptCatch
+            {
+                Free(ext_name);
+                ExceptRethrow();
+            }
+            Free(ext_name);
+        }
+    }
+    obj->dirty = 0;
+    ExceptTry
+    {
+        SMBFlush(obj->smb_obj);
+    }
+    ExceptCatch
+    {
+        if(ExceptCaught()->errnum != 0x10020)
+            ExceptRethrow();
+    }
+}
+
+
+
+fsys_handle_t FsysOpen(fsys_object_t obj, int update, unsigned int fd)
+{
+    fsys_handle_t h;
+
+    if(PrinterClaimsObject(obj))
+        return PrinterOpen(obj, update, fd);
+    finish_keepalive(obj->img);
+    h = Malloc(sizeof(*h));
+    ExceptTry
+    {
+        h->is_printer = 0;
+        h->obj = obj;
+        h->fd = fd;
+        h->smb_handle = SMBOpen(obj->smb_obj, update);
+        if(fd < 256)
+            user_of_file_descriptor[fd] = obj->img;
+    }
+    ExceptCatch
+    {
+        Free(h);
+        ExceptRethrow();
+    }
+    return h;
+}
+
+void FsysClose(fsys_handle_t h)
+{
+    if(h->is_printer)
+    {
+        PrinterClose(h);
+        return;
+    }
+    finish_keepalive(h->obj->img);
+    SMBClose(h->smb_handle);
+    if(h->fd < 256)
+        user_of_file_descriptor[h->fd] = NULL;
+    Free(h);
+}
+
+int FsysGetSize(fsys_handle_t h)
+{
+    if(h->is_printer)
+        return 0;
+    finish_keepalive(h->obj->img);
+    return SMBGetLength(h->obj->smb_obj) + (BLOCK_SIZE - 1) & (BLOCK_SIZE - 1);
+}
+
+void FsysEnsureSize(fsys_handle_t h, int s)
+{
+    int s_now;
+
+    if(h->is_printer)
+        return;
+    finish_keepalive(h->obj->img);
+    s_now = SMBGetLength(h->obj->smb_obj);
+    if(s_now < s)
+    {
+        SMBSetExtent(h->smb_handle, s);
+        SMBSetLength(h->obj->smb_obj, s);
+    }
+}
+
+void FsysLimitSize(fsys_handle_t h, int s)
+{
+    if(h->is_printer)
+    {
+        PrinterLimitSize(h, s);
+        return;
+    }
+    finish_keepalive(h->obj->img);
+    SMBSetExtent(h->smb_handle, s);
+}
+
+fsys_object_t FsysHandle2File(fsys_handle_t h)
+{
+    if(h->is_printer)
+        return PrinterHandle2File(h);
+    return h->obj;
+}
+
+void FsysRead(void *buf, int pos, int count, fsys_handle_t h)
+{
+    // static int err_id = 0;
+
+    ExceptTry
+    {
+        if(h->is_printer)
+            Error("Can't read from a printer");
+        finish_keepalive(h->obj->img);
+        SMBRead(buf, pos, count, h->smb_handle);
+    }
+    ExceptCatch
+    {
+        // show_error(&err_id, "Read", ExceptCaught());
+        ExceptRethrow();
+    }
+}
+
+void FsysWrite(void *buf, int pos, int count, fsys_handle_t h)
+{
+    if(h->is_printer)
+    {
+        PrinterWrite(buf, pos, count, h);
+        return;
+    }
+    finish_keepalive(h->obj->img);
+    SMBWrite(buf, pos, count, h->smb_handle);
+}

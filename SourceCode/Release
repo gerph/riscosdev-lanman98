@@ -1,0 +1,22 @@
+!BaseLIB is a set of libraries for basic functionality -
+threading, debugging, error/exception handling, callbacks etc.
+
+!FSLib is a set of libraries for Filing System implementations.
+
+!PGMod is a set of libraries for doing Wimp stuff (just used
+for the LanMan98 Filer application, not for the core FS). This
+won't be needed for Omniclient based installations.
+
+!StubsG is Justin Fletchers C 26/32bit neutral Stubs.  Moving to
+this was a relatively recent change, when moving to 32bit.  It
+allows LanMan98 to work on all generations of TCP/IP-enabled
+RISC OS computers.
+
+The sources for the libs are included inside them.
+
+LanMan contains the main LanMan98 sources themselves.
+
+
+This code may try to include headers etc for MemCheck which is part
+of DrSmiths C Development Toolkit. If it does just comment out the
+includes and don't build the memcheck targets :)

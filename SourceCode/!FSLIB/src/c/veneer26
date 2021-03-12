@@ -1,0 +1,63 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*
+ *   PHBG 7/10/96: Initial version
+ *
+ *   Original 26 bit version for ARM 6 onwards
+ */
+
+#include <string.h>
+#include "error.h"
+#include "veneer.h"
+
+#define VENEER_SIZE (22)
+
+typedef struct {unsigned int code[VENEER_SIZE];} veneer_t;
+
+static veneer_t veneer[MAXVENEER] =
+{
+    {
+        0xE92D43FF, 0xE1A0AA2D, 0xE1A0AA0A, 0xE1A0200B,
+        0xE1A0000D, 0xE89A0030, 0xE1A0100C, 0xE49CC000,
+        0xE99C1800, 0xE88A1800, 0xE28AAF87, 0xE3A0B000,
+        0xE1A0E00F, 0xE59FF018, 0xE24AAF87, 0xE88A0030,
+        0xE1B0C000, 0xE8BD43FF, 0x03DEF201, 0xE1A0000C,
+        0xE39EF201, 0x00000000
+    }
+};
+
+static int index = 0;
+
+int Veneer(_kernel_oserror *(*func)(_kernel_swi_regs *, void *))
+{
+    if(index >= MAXVENEER)
+        Error("Too many veneers");
+    if(index > 0)
+        veneer[index] = veneer[0];
+    veneer[index].code[VENEER_SIZE - 1] = (int) func;
+    return (int) (veneer + index++);
+}

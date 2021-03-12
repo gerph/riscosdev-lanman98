@@ -1,0 +1,364 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 27/11/96: Initial version
+ */
+
+#include <ctype.h>
+#include <stdio.h>
+#include <string.h>
+#include "kernel.h"
+#include "swis.h"
+#include "error.h"
+#include "memory.h"
+#include "blocked.h"
+#include "thread.h"
+#include "tcp.h"
+#include "time.h"
+#include "netbios.h"
+
+#include "vc.h"
+
+#define SHORTFLUSH
+
+#define RESOLVE_TIME_OUT (1000)
+#define CONNECT_TIME_OUT (1000)
+#define REQUEST_TIME_OUT (2000)
+// #define REQUEST_TIME_OUT (5)
+
+#define INIT_BUF_SIZE (2048)
+
+#define MIN(x,y) ((x) < (y) ? (x) : (y))
+
+struct vc_s
+{
+    tcp_addr_t addr;
+    tcp_conn_t conn;
+    data_t pkt;
+};
+
+
+static void ensure_timeout(void)
+{
+    int timed_out;
+
+    timed_out = ThreadTimedout();
+    ThreadResetTimeout();
+    if(!timed_out)
+        ExceptRethrow();
+}
+
+static tcp_addr_t resolve(char *domain)
+{
+    tcp_addr_t addr;
+
+    ThreadSetTimeout(RESOLVE_TIME_OUT);
+    addr = NULL;
+    ExceptTry
+    {
+        addr = TcpResolve(domain);
+    }
+    ExceptCatch
+    {
+        ensure_timeout();
+        Error("Timed out while resolving");
+    }
+    ThreadResetTimeout();
+    if(addr == NULL)
+        Error("Unable to resolve address: %s", domain);
+    return addr;
+}
+
+static tcp_conn_t form_connection(tcp_addr_t addr, tcp_port_t port)
+{
+    tcp_conn_t conn;
+
+    ThreadSetTimeout(CONNECT_TIME_OUT);
+    conn = NULL;
+    ExceptTry
+    {
+        conn = TcpCall(TCP_PORT_ANY, port, addr);
+        TcpSetNoDelay(conn);
+    }
+    ExceptCatch
+    {
+        ensure_timeout();
+        Error("Timed out while connecting");
+    }
+    ThreadResetTimeout();
+    if(conn == NULL)
+        Error("Connection lost (1)");
+    return conn;
+}
+
+int debugging = 0;
+
+static void mb_out(char *buf, int size, char *basename, int i)
+{
+    char fname[32];
+    FILE *f;
+
+    if(!debugging) return;
+    sprintf(fname, "%s%d", basename, i);
+    f = fopen(fname, "w");
+    if(f)
+    {
+        fwrite(buf, 1, size, f);
+    	fclose(f);
+    }
+}
+
+
+static void request_session(vc_t vc, char *source, char *dest)
+{
+    char *p;
+    int len;
+
+    p = vc->pkt.buf;
+    len = NetBIOSEncodeName(p+4, dest);
+    len += NetBIOSEncodeName(p+len+4, source);
+    p[0] = 0x81;
+    p[1] = ((len >> 16) & 0xFF);
+    p[2] = ((len >> 8) & 0xFF);
+    p[3] = (len & 0xFF);
+    // mb_out(p, len+4, "Out", 0);
+    ThreadSetTimeout(REQUEST_TIME_OUT);
+    ExceptTry
+    {
+        TcpWrite(p, len+4, vc->conn);
+        p[0] = 0x85;
+        while(p[0] == 0x85)
+            if(TcpRead(p, 4, vc->conn) != 4)
+                Error("Connection lost (2)");
+        len = (p[1] << 16) | (p[2] << 8) | p[3];
+        if(TcpRead(p+4, len, vc->conn) != len)
+            Error("Connection lost (3)");
+        // mb_out(p, len+4, "In", 0);
+        if(p[0] == 0x84)
+            Error("Retarget request received");
+        if(p[0] != 0x82)
+        {
+            if (p[4] == 0x82)
+                Error("Session refused (NetBIOS name not present)", p[4]);
+            else
+                Error("Session refused 0x%02X", p[4]);
+        }
+    }
+    ExceptCatch
+    {
+        ensure_timeout();
+        Error("Timed out while requesting session");
+    }
+    ThreadResetTimeout();
+}
+
+vc_t VC(char *domain, tcp_port_t port, char *netbios_name)
+{
+    vc_t vc;
+
+    vc = Malloc(sizeof(*vc));
+    vc->addr = NULL;
+    vc->conn = NULL;
+    vc->pkt.buf = NULL;
+    _swix(Hourglass_On, 0);
+    ExceptTry
+    {
+        vc->addr = resolve(domain);
+        vc->conn = form_connection(vc->addr, port);
+        vc->pkt.size = INIT_BUF_SIZE;
+        vc->pkt.buf = Malloc(INIT_BUF_SIZE);
+#ifdef DEBUG
+        printf("Host name = %s\n", TcpHostName());
+#endif
+        request_session(vc, TcpHostName(), netbios_name);
+    }
+    ExceptCatch
+    {
+        _swix(Hourglass_Off, 0);
+        VCDestruct(vc);
+        ExceptRethrow();
+    }
+    _swix(Hourglass_Off, 0);
+    return vc;
+}
+
+void VCDestruct(vc_t vc)
+{
+    if(vc)
+    {
+        if(vc->pkt.buf) Free(vc->pkt.buf);
+        if(vc->conn) TcpConnDestruct(vc->conn);
+        TcpAddrDestruct(vc->addr);
+        Free(vc);
+    }
+}
+
+data_t VCBuffer(vc_t vc)
+{
+    data_t res;
+
+    if(vc == NULL)
+    	  Error("No virtual circuit");
+    res.buf = vc->pkt.buf+4;
+    res.size = vc->pkt.size-4;
+    return res;
+}
+
+void VCResizeBuffer(vc_t vc, int newsize)
+{
+    int common;
+    char *p;
+
+    if(vc == NULL)
+    	  Error("No virtual circuit");
+    newsize += 4;
+    common = MIN(vc->pkt.size, newsize);
+    p = Malloc(newsize);
+    memcpy(p, vc->pkt.buf, common);
+    Free(vc->pkt.buf);
+    vc->pkt.buf = p;
+    vc->pkt.size = newsize;
+}
+
+void VCSend(vc_t vc, int length)
+{
+    static int i = 0;
+    char *p;
+
+    if(vc == NULL)
+    	  Error("No virtual circuit");
+    if(length+4 > vc->pkt.size)
+        Error("Overflowed packet buffer %d, %d", length+4, vc->pkt.size);
+    p = vc->pkt.buf;
+    p[0] = 0;
+    p[1] = ((length >> 16) & 0xFF);
+    p[2] = ((length >> 8) & 0xFF);
+    p[3] = (length & 0xFF);
+    mb_out(p, length+4, "<LanMan98$Dir>.Out.pkt", ++i);
+    ThreadSetTimeout(REQUEST_TIME_OUT);
+    ExceptTry
+    {
+        // BlockedWait();
+        TcpWrite(p, length+4, vc->conn);
+    }
+    ExceptCatch
+    {
+        ensure_timeout();
+        Error("Timed out while sending");
+    }
+    ThreadResetTimeout();
+}
+
+void VCReceive(vc_t vc)
+{
+    int length;
+    static int i = 0;
+    char *p;
+
+    if(vc == NULL)
+    	  Error("No virtual circuit");
+    ThreadSetTimeout(REQUEST_TIME_OUT);
+    _swix(Hourglass_On, 0);
+    ExceptTry
+    {
+        p = vc->pkt.buf;
+        p[0] = 0x85;
+        while(p[0] == 0x85)
+            if(TcpRead(p, 4, vc->conn) != 4)
+                Error("Connection lost (4)");
+        length = (p[1] << 16) | (p[2] << 8) | p[3];
+        if(length + 4 > vc->pkt.size)
+            Error("Oversized packet received %d, %d", length+4, vc->pkt.size);
+        if(TcpRead(p+4, length, vc->conn) != length)
+            Error("Connection lost (5)");
+        mb_out(p, length+4, "<LanMan98$Dir>.In.pkt", ++i);
+    }
+    ExceptCatch
+    {
+        _swix(Hourglass_Off, 0);
+        ensure_timeout();
+        Error("Timed out while receiving");
+    }
+    _swix(Hourglass_Off, 0);
+    ThreadResetTimeout();
+}
+
+int VCReceiveRaw(char *buf, int requested, vc_t vc)
+{
+    int length;
+    char p[4];
+
+    if(vc == NULL)
+    	  Error("No virtual circuit");
+    ThreadSetTimeout(REQUEST_TIME_OUT);
+    _swix(Hourglass_On, 0);
+    ExceptTry
+    {
+        p[0] = 0x85;
+        while(p[0] == 0x85)
+            if(TcpRead(p, 4, vc->conn) != 4)
+                Error("Connection lost (6)");
+        length = (p[1] << 16) | (p[2] << 8) | p[3];
+        if(length > requested)
+        {
+            VCFlush(vc);
+            Error("Oversized response to raw read");
+        }
+        TcpRead(buf, length, vc->conn);
+    }
+    ExceptCatch
+    {
+        _swix(Hourglass_Off, 0);
+        ensure_timeout();
+        Error("Timed out while receiving");
+    }
+    _swix(Hourglass_Off, 0);
+    ThreadResetTimeout();
+    return length;
+}
+
+void VCCommunicate(vc_t vc, int length)
+{
+    if(vc == NULL)
+    	  Error("No virtual circuit");
+    VCSend(vc, length);
+    VCReceive(vc);
+}
+
+void VCFlush(vc_t vc)
+{
+    static char buf[256];
+
+    if(vc == NULL)
+    	  return;
+    ThreadSetTimeout(1);
+    ExceptTry
+    {
+        while(TcpRead(buf, 256, vc->conn) != 0)
+            ;
+    } ExceptCatch {}
+    ThreadResetTimeout();
+}

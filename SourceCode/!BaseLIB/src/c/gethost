@@ -1,0 +1,117 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*
+ *   RJW: 9/1/97
+ *   PHBG 3/9/97: Added gethostbyname to deal with local networks
+ */
+
+#include "MemCheck.MemCheck.h"
+#include "inetlib.h"
+#include "netdb.h"
+#include "sys/types.h"
+#include "sys/socket.h"
+#include "gethost_.h"
+
+#ifndef NULL
+#define NULL (0)
+#endif
+
+static struct hostent internal;
+static unsigned long internal_addr;
+static char *internal_addr_ptr;
+
+struct hostent *gethost(char *name, int *err) {
+
+  unsigned long b1;
+  struct hostent *res;
+
+  b1 = inet_addr(name);
+  if (b1 != -1) {
+
+    internal.h_name      = name;
+    internal.h_aliases   = NULL;
+    internal.h_addrtype  = AF_INET;
+    internal.h_length    = 4;
+    internal.h_addr_list = &internal_addr_ptr;
+    internal_addr_ptr = (char *) &internal_addr;
+    internal_addr = b1;
+    *err = 0;
+    return &internal;
+  }
+  /* OK. At last, we now do the CORRECT thing. To explain why we do it this
+   * way, we need to know what the different calls do. The gethostbyname call
+   * first looks up stuff in the hostfile. If its not there it then calls the
+   * resolver in a blocking style. This is bad. The gethost_ call manually
+   * calls the Resolver SWI in a NON blocking style. The resolver first checks
+   * the hosts file, then starts checking its servers.
+   *
+   * What WE do therefore is this:
+   *  * Call gethost_(). If there is a resolver present we will check both
+   *    the hosts file AND the network. We will therefore cover all the bases
+   *    but we'll fail with an error if the resolver isn't there or isn't
+   *    configured.
+   *  * Therefore, iff we get an error from the gethost_() call we call
+   *    gethostbyname which manually checks the resolver.
+   *
+   * Thus we never block unless we haven't got a resolver loaded.
+   */
+#if 1
+   /* Latest way of doing things - with thanks to Justin for the explaination */
+  if (gethost_(name, err, &res)) {
+    /* Calling the resolver failed. Do it the old way */
+    res = gethostbyname(name);
+    if (res) {
+      *err = 0;
+    } else {
+      *err = -2; /* Don't ask me, thats what the resolver gives */
+    }
+  }
+#else
+   /* Old way */
+#ifndef TCP5
+  res = gethostbyname(name);
+  if(res)
+  {
+      *err = 0;
+  }
+  else
+  {
+#endif
+    res = gethost_(name, err);
+#ifndef TCP5
+  }
+#endif
+#endif
+  if(*err == NULL)
+  {
+      MemCheck_RegisterMiscBlock(res, sizeof(*res));
+      MemCheck_RegisterMiscBlock(res->h_addr_list, 4);
+      MemCheck_RegisterMiscBlock(res->h_addr, res->h_length);
+  }
+  return res;
+}
+

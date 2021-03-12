@@ -1,0 +1,15 @@
+About Error Blocks
+
+Error blocks are allocated to third parties who need their own unique error
+numbers (e.g. for a module).  They are usually allocation on a block per
+company basis but can be allocated on a module basis if your module requires
+lots of error numbers.   Error Blocks are allocated in blocks of 255 (&100).
+
+If an Error block is required then you will need to ensure that the 'block
+required' option is turned on and a description of what it is going to be
+used for is entered.
+
+To add the allocation to the list you will need to click SELECT on the 'Add' 
+icon.
+
+To abort this operation you should click SELECT on the 'Cancel' icon.

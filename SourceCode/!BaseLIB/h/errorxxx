@@ -1,0 +1,72 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*
+ *   PHBG 8/1/97: Initial version
+ *   PHBG 28/1/97: Made ExceptEndTry unnecessary, and directed errors thrown
+ *                 by the catch clause to the next level out.
+ */
+
+#ifndef _EXCEPTXXX_
+#define _EXCEPTXXX_
+
+#include "nsetjmp.h"
+
+
+#define ExceptTry \
+ExceptXXXPush();\
+if(!SetJmp(ExceptXXXStack->label))\
+{
+
+#define ExceptCatch \
+    ExceptXXXStack->failed = 0;\
+}\
+else\
+{\
+    ExceptXXXStack->failed = 1;\
+}\
+if(ExceptXXXPop())
+
+#define ExceptEnd
+
+struct exception_stack_s
+{
+    int failed;
+    jmpbuf_t label;
+    exception_stack_t link;
+};
+
+extern exception_stack_t ExceptXXXStack;
+
+void ExceptXXXPush(void);
+
+int ExceptXXXPop(void);
+
+void ExceptVarXXX(void *);
+
+#define ExceptVar(A) ExceptVarXXX((void *)&(A));
+
+#endif /* EXCEPTXXX */

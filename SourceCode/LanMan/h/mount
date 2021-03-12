@@ -1,0 +1,46 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 14/10/98: Initial version
+ */
+
+typedef struct mount_s *mount_t;
+
+mount_t FsysFindMount(char *name);
+
+mount_t FsysNthMount(int);
+
+mount_t FsysMount(char *name, char *server, char *path, char *user, char *passwd);
+
+void FsysDismount(mount_t mt);
+
+char *FsysMountName(mount_t mt);
+
+char *FsysMountServer(mount_t mt);
+
+char *FsysMountPath(mount_t mt);
+
+char *FsysMountUser(mount_t mt);

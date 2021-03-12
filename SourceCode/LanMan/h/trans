@@ -1,0 +1,61 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 30/12/97: Initial version
+ */
+
+#ifndef _TRANS_
+#define _TRANS_
+
+#include "vc.h"
+
+#define TRANS2_FIND_FIRST2                (0x01)
+#define TRANS2_FIND_NEXT2		  (0x02)
+#define TRANS2_QUERY_FS_INFORMATION	  (0x03)
+#define TRANS2_QUERY_PATH_INFORMATION	  (0x05)
+#define TRANS2_SET_PATH_INFORMATION	  (0x06)
+#define TRANS2_SET_FILE_INFORMATION	  (0x08)
+
+typedef struct
+{
+    void *buf;
+    int in, out;
+    int refs;
+} *trans_buf_t;
+
+
+trans_buf_t TransInitBuf(int, int);
+
+trans_buf_t TransDupBuf(trans_buf_t);
+
+void TransFreeBuf(trans_buf_t);
+
+void TransCommunicate(trans_buf_t, trans_buf_t, trans_buf_t, vc_t, void (*)(vc_t), void (*)(vc_t));
+
+void TransRAP(trans_buf_t, trans_buf_t, vc_t, void (*)(vc_t), void (*)(vc_t));
+
+#endif
+

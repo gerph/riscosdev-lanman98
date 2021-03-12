@@ -1,0 +1,142 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*
+ *   PHBG 24/7/98: Initial version
+ *   PHBG 5/8/98: Added timeouts
+ */
+
+#ifndef _THREAD_
+#define _THREAD_
+
+#ifndef NULL
+#define NULL (0)
+#endif
+
+typedef struct thread_s *thread_t;
+
+
+void ThreadLibraryFinalise(void);
+
+
+thread_t Thread(void (*f)(void *), void *x);
+/*
+    Creates a thread that executes f(x); execution is started as far as
+    the first ThreadWait call.  The resultant thread should be passed to
+    the scheduler, perhaps with a priority.  The argument x becomes the
+    property of the thread.
+
+    A typical thread looks like:
+
+    void f(void *x)
+    {
+        ExceptTry
+        {
+            .
+            .
+            .
+        }
+        ExceptCatch
+        {
+            .
+            .
+            .
+        }
+        XDestruct(x);
+    }
+*/
+
+void ThreadDestruct(thread_t);
+/*
+    Called by the scheduler to release all resources associated with a
+    thread.  The thread gets killed off cleanly by being restarted with
+    its last ThreadWait call throwing an exception.
+*/
+
+void ThreadKill(thread_t);
+/*
+    Called by some other thread so that the thread dies and will be
+    destructed by the scheduler.
+*/
+
+int ThreadHasCompleted(thread_t);
+/*
+    Called by the scheduler to find out whether a thread has run its
+    natural course.
+*/
+
+void ThreadService(thread_t);
+/*
+    Called by the schedular to give a thread a chance to execute; the call
+    returns when the thread completes or executes ThreadWait.
+*/
+
+int ThreadRipe(thread_t);
+/*
+    Called by the scheduler to discover whether its worth servicing a
+    thread.  If this call returns 0 then a call to ThreadService will make
+    no progress and just waste time.
+*/
+
+void ThreadWait(int (*f)(void *), void *x);
+/*
+    Called from within a thread to let everybody else get a look in.  f(x)
+    is a test that will be used by ThreadRipe to decide when next to
+    service the thread.  If f(x) throws an exception then ThreadRipe will
+    return 1, and the thread, when next serviced, will behave as though it
+    called f(x) in the ThreadWait call.
+*/
+
+void ThreadOkay(void);
+/*
+    Called when catching of errors without rethrowing them, might stop a
+    thread being killed.  If the error was due to a kill message the error
+    is rethrown by this call.  Otherwise it does nothing.
+*/
+
+void ThreadSetTimeout(int);
+/*
+    Called to specify a period after which a thread should time out.
+    Timing out occurs within a thread's calls to ThreadWait, and causes
+    those calls to throw an exception.
+*/
+
+void ThreadResetTimeout(void);
+/*
+    Nullifies the effect of calling ThreadSetTimeout.
+*/
+
+int ThreadTimedout(void);
+/*
+    Called within a thread to find out if it has timed out.
+*/
+
+void ThreadThrowError(thread_t);
+/*
+    Difficult to explain.
+*/
+
+#endif

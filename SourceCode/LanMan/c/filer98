@@ -1,0 +1,603 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Portions Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+// #include "MemCheck:MemCheck.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include "swis.h"
+#include "lm_swis.h"
+#include "kernel.h"
+#include "PGwin.h"
+#include "PGicn.h"
+#include "PGmnu.h"
+#include "PGerr.h"
+#include "lm98enum.h"
+
+#define REG_SEARCH (50*1024)
+#define MAX_LINE   (256)
+
+static int ci_strcmp(char *s1, char *s2)
+{
+    while(*s1 && toupper(*s1) == toupper(*s2))
+    {
+        s1++;
+        s2++;
+    }
+    return toupper(*s1) - toupper(*s2);
+}
+
+static char *find_reg(char *base)
+{
+    int i, j;
+    char key[] = "unencrypted  reg";
+
+    i = j = 0;
+    while(i < REG_SEARCH && key[j] != 0)
+        if(key[j++] != base[i++])
+            j = 0;
+    if(key[j] != 0)
+        return NULL;
+    else
+        return base + i;
+}
+
+static void set_info_icons(win_window win)
+{
+    icn_icon *icon;
+    _kernel_swi_regs regs;
+    _kernel_oserror *err;
+    char *help, buf[256], *cptr;
+
+    icon = IcnButtons(win);
+    regs.r[0] = 18;
+    regs.r[1] = (int) "LanMan98";
+    err = _kernel_swi(OS_Module, &regs, &regs);
+    if(err != NULL)
+        ErrorFatal("LanMan98 module not loaded");
+//    MemCheck_RegisterMiscBlock((void *) regs.r[3], REG_SEARCH);
+//    MemCheck_RegisterMiscBlock((void *) regs.r[4], REG_SEARCH);
+    help = (char *) (regs.r[3] + *((int *)(regs.r[3] + 20)));
+    cptr = strstr(help, "\t");
+    if(cptr == NULL)
+        Error("LanMan98 module has corrupted help string");
+    strcpy(buf, cptr + 1);
+    cptr = strstr(buf, ")");
+    if(cptr == NULL)
+        Error("LanMan98 module has corrupted help string");
+    cptr[1] = '\0';
+    IcnSetText(icon[6], buf);
+    cptr = find_reg((char *) regs.r[4]);
+    if(cptr == NULL)
+        Error("LanMan98 module has corrupted help string");
+    IcnSetText(icon[7], cptr);
+//    MemCheck_UnRegisterMiscBlock((void *) regs.r[3]);
+//    MemCheck_UnRegisterMiscBlock((void *) regs.r[4]);
+}
+
+static win_window info_window(void)
+{
+    win_template info_tplt;
+    win_window info;
+
+    info_tplt = WinLdTplt("<LanMan98$Dir>.Templates", "info");
+    if(info_tplt == NULL)
+        ErrorFatal("Can't find \"info\" in \"<LanMan98$Dir>.Templates\"");
+    info = WinCreate(info_tplt);
+    if(info == NULL)
+        ErrorFatal("Can't create \"Info\" window");
+    set_info_icons(info);
+    return info;
+}
+
+typedef struct mount_rec_s *mount_rec_t;
+
+struct mount_rec_s
+{
+    icn_icon icn;
+    int mount;
+    int notypes;
+    int working;
+    mount_rec_t next;
+};
+
+static mount_rec_t rec_list = NULL;
+
+static mount_rec_t rec_construct(void)
+{
+    mount_rec_t rec;
+
+    rec = malloc(sizeof(*rec));
+    rec->next = rec_list;
+    rec_list = rec;
+    return rec;
+}
+
+static void rec_destruct(mount_rec_t rec)
+{
+    mount_rec_t *recp;
+
+    for(recp = &rec_list; *recp; recp = &(*recp)->next)
+    {
+        if(*recp == rec)
+        {
+            *recp = (*recp)->next;
+            free(rec);
+            return;
+        }
+    }
+    ErrorFatal("Attempt to destruct non-existant mount record");
+}
+
+static mount_rec_t rec_find(char *name)
+{
+    mount_rec_t rec;
+
+    for(rec = rec_list; rec; rec = rec->next)
+        if(ci_strcmp(IcnText(rec->icn), name) == 0)
+            return rec;
+    return NULL;
+}
+
+static mnu_menu menu;
+static mnu_item item_free, item_dismount;
+static win_window connect_window;
+static char link_fname[256];
+
+static icn_icon icn_local, icn_server, icn_share, icn_user,
+                icn_password, icn_connect, icn_cancel, icn_notypes,
+                icn_keep_pw;
+
+static mount_rec_t menu_rec, null_rec = NULL;
+
+static void show_discs(void)
+{
+    _kernel_oscli("Filer_OpenDir -LargeIcons LM98:Discs");
+}
+
+static void bar_icon_clickS(void)
+{
+    char buf[256];
+    mount_rec_t rec;
+
+    rec = IcnData();
+    if(rec->mount)
+    {
+        sprintf(buf, "Filer_OpenDir LanMan98%s::%s.$",
+                     rec->notypes ? "#notypes" : "",
+                     IcnText(rec->icn));
+
+        _kernel_oscli(buf);
+    }
+    else
+    {
+        show_discs();
+    }
+}
+
+static void bar_icon_clickA(void)
+{
+    mount_rec_t rec;
+
+    rec = IcnData();
+    show_discs();
+}
+
+static void bar_icon_clickM(void)
+{
+    menu_rec = IcnData();
+    MnuGrey(item_dismount, menu_rec->mount == 0);
+    MnuGrey(item_free, menu_rec->mount == 0);
+    MnuOpen(menu);
+}
+
+static void add_disc(char *name, int mount, int notypes)
+{
+    mount_rec_t rec;
+
+    rec = rec_find(name);
+    if(rec == NULL)
+    {
+        rec = rec_construct();
+        rec->icn = IcnBarDisc("!lanman98", name);
+        IcnSetData(rec->icn, rec);
+        IcnClickS(rec->icn, bar_icon_clickS);
+        IcnClickA(rec->icn, bar_icon_clickA);
+        IcnClickM(rec->icn, bar_icon_clickM);
+    }
+    rec->mount = mount;
+    rec->notypes = notypes;
+    rec->working = 1;
+    if(mount == 0)
+        null_rec = rec;
+}
+
+static void new_disc(void)
+{
+    link_fname[0] = '\0';
+    IcnSetText(icn_local, "");
+    IcnSetText(icn_server, "");
+    IcnSetText(icn_share, "");
+    IcnSetText(icn_user, "");
+    IcnSetText(icn_password, "");
+    IcnSetSel(icn_notypes, 0);
+    IcnSetSel(icn_keep_pw, 0);
+    WinOpen(connect_window);
+    IcnGiveFocus(icn_local);
+}
+
+static void dismount_disc(void)
+{
+    _kernel_oserror *err;
+
+    if(menu_rec)
+    {
+        err = _swix(LanMan98_OmniOp, _IN(0)|_IN(1), 1, menu_rec->mount);
+        if(err) WinError(err);
+        IcnBarDelete(menu_rec->icn);
+        rec_destruct(menu_rec);
+        menu_rec = NULL;
+        if(rec_list == NULL)
+            add_disc("", 0, 0);
+        MnuOpen(NULL);
+    }
+}
+
+static void show_free(void)
+{
+    char buf[256];
+
+    sprintf(buf, "ShowFree -fs LanMan98 %s", IcnText(menu_rec->icn));
+    _kernel_oscli(buf);
+
+}
+
+static void mk_menu(void)
+{
+    mnu_item item[6];
+
+    item[0] = MnuSubmenu("Info", MnuWindow(info_window()));
+    item[1] = MnuAction("Show discs", show_discs);
+    item[2] = MnuAction("New...", new_disc);
+    item[3] = item_dismount = MnuAction("Dismount", dismount_disc);
+    item[4] = item_free = MnuAction("Free", show_free);
+    item[5] = NULL;
+    menu = MnuMenu("LanMan98", item);
+}
+
+static void win_error(char *s)
+{
+    _kernel_oserror err;
+
+    err.errnum = 0;
+    strcpy(err.errmess, s);
+    WinError(&err);
+}
+
+static void save_share(void)
+{
+    static const char link_fname_fmt[]  = "LM98:Discs.%s";
+    static const char settype_cmd_fmt[] = "SetType %s &069";
+    char buf[256];
+    FILE *f;
+
+    if (link_fname[0] == '\0')
+    {
+        const char *icn_text = IcnText(icn_local);
+
+        if(sizeof(link_fname_fmt) - 2 + strlen(icn_text) <= sizeof(link_fname))
+            sprintf(link_fname, link_fname_fmt, IcnText(icn_local));
+    }
+    f = fopen(link_fname, "w");
+    if(f)
+    {
+        fprintf(f, "Server: %s\n", IcnText(icn_server));
+        fprintf(f, "Share: %s\n", IcnText(icn_share));
+        if(*IcnText(icn_user))
+            fprintf(f, "User: %s\n", IcnText(icn_user));
+        if(*IcnText(icn_password))
+        {
+            if(IcnSel(icn_keep_pw))
+                fprintf(f, "Password: %s\n", IcnText(icn_password));
+            else
+                fprintf(f, "Password: *****\n");
+        }
+        if(IcnSel(icn_notypes))
+            fprintf(f, "Notypes: Y\n");
+        fclose(f);
+        if(sizeof(settype_cmd_fmt) - 2 + strlen(link_fname) <= sizeof(buf))
+        {
+            sprintf(buf, settype_cmd_fmt, link_fname);
+            _kernel_oscli(buf);
+        }
+    }
+}
+
+static void str2up(char *s, char *t, int size)
+{
+    int len, i;
+
+    len = strlen(t) + 1;
+    if(len > size)
+        len = size;
+    for(i = 0; i < len; i++)
+        s[i] = toupper(t[i]);
+    s[size-1] = 0;
+}
+
+#define MAX_SHARE (64)
+static void connect(void)
+{
+    _kernel_oserror *err;
+    _kernel_swi_regs r;
+    char buf[MAX_SHARE];
+
+    if(*IcnText(icn_local) == 0)
+        win_error("\"Local name\" not specified");
+    else if(*IcnText(icn_server) == 0)
+        win_error("\"Server\" not specified");
+    else if(*IcnText(icn_share) == 0)
+        win_error("\"Share\" not specified");
+    else
+    {
+        str2up(buf, IcnText(icn_share), MAX_SHARE);
+        r.r[0] = 0;
+        r.r[1] = (int) IcnText(icn_server);
+        r.r[2] = (int) IcnText(icn_user);
+        r.r[3] = (int) IcnText(icn_password);
+        r.r[4] = (int) IcnText(icn_local);
+        r.r[5] = (int) buf;
+        err = _kernel_swi(LanMan98_OmniOp, &r, &r);
+        if(err)
+        {
+            WinOpen(connect_window);
+            IcnGiveFocus(icn_password);
+            WinError(err);
+        }
+        else
+        {
+            save_share();
+            add_disc(IcnText(icn_local), r.r[1], IcnSel(icn_notypes));
+            if(null_rec)
+            {
+                IcnBarDelete(null_rec->icn);
+                rec_destruct(null_rec);
+                null_rec = NULL;
+            }
+            WinClose(connect_window);
+        }
+    }
+}
+
+static void cancel(void)
+{
+    WinClose(connect_window);
+}
+
+static int key_press(int k)
+{
+    if(k != '\r')
+        return 0;
+    connect();
+    return 1;
+}
+
+static void mk_connect_window()
+{
+    win_template tplt;
+    icn_icon *icn;
+
+    tplt = WinLdTplt("<LanMan98$Dir>.Templates", "connect");
+    if(tplt == NULL)
+        ErrorFatal("Can't find \"connect\" in \"<LanMan98$Dir>.Templates\"");
+    connect_window = WinCreate(tplt);
+    if(connect_window == NULL)
+        ErrorFatal("Can't create \"Connect\" window");
+    WinPress(connect_window, key_press);
+    icn = IcnButtons(connect_window);
+    icn_local        = icn[5];
+    icn_server	     = icn[6];
+    icn_share	     = icn[7];
+    icn_user	     = icn[8];
+    icn_password     = icn[9];
+    icn_connect	     = icn[10];
+    icn_cancel	     = icn[11];
+    icn_notypes	     = icn[13];
+    icn_keep_pw	     = icn[15];
+    IcnClickS(icn_connect, connect);
+    IcnClickA(icn_connect, connect);
+    IcnClickS(icn_cancel, cancel);
+    IcnClickA(icn_cancel, cancel);
+}
+
+// static char *tag_read(char *tag, char *buf)
+// {
+//     return (memcmp(tag, buf, strlen(tag)) == 0)
+//                ? strtok(buf + strlen(tag), " \t\n")
+//                : NULL;
+// }
+
+static char *tag_read(char *tag, char *buf)
+{
+    char *ret;
+
+    if(memcmp(tag, buf, strlen(tag)) != 0)
+        return NULL;
+    buf += strlen(tag);
+    buf += strspn(buf, " \t");
+    ret = strchr(buf, '\n');
+    if(ret) *ret = 0;
+    return buf;
+}
+
+static int data_open(int type, char *name)
+{
+    FILE *f;
+    char buf[256], *s;
+    int needs_password;
+
+    if(type != 0x069)
+        return 0;
+    f = fopen(name, "r");
+    if(f)
+    {
+        if(strlen(name) + 1 <= sizeof(link_fname))
+            sprintf(link_fname, "%s", name);
+
+        s = strrchr(name, '.');
+        name = s ? s + 1 : name;
+        s = strrchr(name, ':');
+        name = s ? s + 1 : name;
+        IcnSetText(icn_local, name);
+        IcnSetText(icn_server, "");
+        IcnSetText(icn_share, "");
+        IcnSetText(icn_user, "");
+        IcnSetText(icn_password, "");
+        IcnSetSel(icn_notypes, 0);
+        IcnSetSel(icn_keep_pw, 0);
+        needs_password = 0;
+        while(!feof(f))
+        {
+            if(fgets(buf, 256, f))
+            {
+                s = tag_read("Server:", buf);
+                if(s) IcnSetText(icn_server, s);
+                s = tag_read("Share:", buf);
+                if(s) IcnSetText(icn_share, s);
+                s = tag_read("User:", buf);
+                if(s) IcnSetText(icn_user, s);
+                s = tag_read("Password:", buf);
+                if(s)
+                {
+                    needs_password = (strcmp(s, "*****") == 0);
+                    IcnSetSel(icn_keep_pw, !needs_password);
+
+                    if(!needs_password)
+                        IcnSetText(icn_password, s);
+                }
+                s = tag_read("Notypes:", buf);
+                if(s && (s[0] == 'y' || s[0] == 'Y'))
+                    IcnSetSel(icn_notypes, 1);
+            }
+        }
+        fclose(f);
+        if(needs_password)
+        {
+            WinOpen(connect_window);
+            IcnGiveFocus(icn_password);
+        }
+        else
+        {
+            connect();
+        }
+    }
+    return 1;
+}
+
+static void update_mounts(void)
+{
+    mount_rec_t rec, *recp;
+
+    for(rec = rec_list; rec; rec = rec->next)
+        rec->working = 0;
+
+    for(LM98EnumBegin(); LM98EnumGoing(); LM98EnumNext())
+    {
+        rec = rec_find(LM98EnumName());
+        if(rec)
+        {
+            rec->working = 1;
+            rec->mount = LM98EnumMount();
+            // Probably has that value already, but if it doesn't then
+            // it should have, and the old value is stale (need not be closed)
+        }
+        else
+        {
+            add_disc(LM98EnumName(), LM98EnumMount(), 0);
+            if(null_rec)
+            {
+                IcnBarDelete(null_rec->icn);
+                rec_destruct(null_rec);
+                null_rec = NULL;
+            }
+        }
+    }
+
+    if(null_rec)
+        null_rec->working = 1;
+
+    recp = &rec_list;
+    while(*recp)
+    {
+        if((*recp)->working)
+        {
+            recp = &(*recp)->next;
+        }
+        else
+        {
+            rec = *recp;
+            *recp = rec->next;
+            IcnBarDelete(rec->icn);
+            free(rec);
+        }
+    }
+
+    if(rec_list == NULL)
+        add_disc("", 0, 0);
+}
+
+int main()
+{
+    int *poll_word = NULL;
+    _kernel_oserror *err;
+
+//    MemCheck_Init();
+//    MemCheck_RedirectToFilename("<LanMan98$Dir>.FilerMem");
+//    MemCheck_InterceptSCLStringFunctions();
+//    MemCheck_SetQuitting(0, 0);
+//    MemCheck_OutputBlocksInfo();
+    WinInit("LanMan98 Filer");
+    mk_menu();
+    mk_connect_window();
+    WinDataOpen(data_open);
+    add_disc("", 0, 0);
+    err = _swix(LanMan98_PollWord, _OUT(0), &poll_word);
+    if(err) ErrorFatal("LamMan98 module not present");
+//    MemCheck_RegisterMiscBlock(poll_word, sizeof(int));
+    update_mounts();
+    while(1)
+    {
+        if(*poll_word)
+        {
+            err = _swix(LanMan98_PollWord, _OUT(0), &poll_word);
+            if(err) ErrorFatal("LamMan98 module not present");
+            update_mounts();
+        }
+        WinSleep(50);
+    }
+    return 0;
+}

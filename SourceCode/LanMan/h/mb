@@ -1,0 +1,91 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 19/12/96: Initial version
+ */
+
+#include "data.h"
+
+#define DATA		(1)
+#define DIALECT		(2)
+#define PATHNAME	(3)
+#define ASCII		(4)
+#define VARBLK          (5)
+
+#define HDRSIZE         (0x20)
+
+typedef unsigned short ushort;
+
+typedef struct
+{
+    int type, size;
+    char *data;
+} smb_buf_t;
+
+
+void MBInit(data_t mb);
+
+void MBSetCom(data_t mb, int com);
+
+void MBSetTid(data_t mb, int tid);
+
+int MBGetUid(data_t mb);
+
+int MBError(data_t mb);
+
+void MBSetVWV(data_t mb, int n, ushort vwv[]);
+
+void MBAddDialect(data_t mb, char *dia);
+
+void MBAddAscii(data_t mb, char *dia);
+
+void MBContinueAscii(data_t mb, char *dia);
+
+void MBAddVarBlk(data_t mb, int size, void *data);
+
+void MBAddData(data_t mb, int size, void *data);
+
+void MBAddRaw(data_t mb, int size, void *data);
+
+void MBGetVWV(data_t mb, int n, ushort vwv[]);
+
+char *MBGetRawBuf(data_t mb, int *size);
+
+void MBGetBuf(data_t mb, smb_buf_t *smb_buf);
+
+int MBBufType(smb_buf_t *smb_buf);
+
+int MBBufSize(smb_buf_t *smb_buf);
+
+char *MBBufData(smb_buf_t *smb_buf);
+
+int MBMessLen(data_t mb);
+
+void MBClearError(data_t mb);
+
+void MBSetFlags(data_t mb, int, int);
+
+void MBGetError(data_t mb, int *error, int *sub_error);

@@ -1,0 +1,49 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*    
+    $Id: nodebug,v 1.1 2001/11/02 17:26:55 paul Exp $
+    
+    $Log: nodebug,v $
+    Revision 1.1  2001/11/02 17:26:55  paul
+    Reorder name/name,### search for files that end in ~1 etc, so that I
+    don't lose the file type.  Necessary because Windows allows access
+    to both DOS and full names.
+
+*/
+
+#ifndef _DEBUG_H_
+
+#define DEBUG_PRINT0(fmt)
+#define DEBUG_PRINT1(fmt,a)
+#define DEBUG_PRINT2(fmt,a,b)
+#define DEBUG_PRINT3(fmt,a,b,c)
+#define DEBUG_PRINT4(fmt,a,b,c,d)
+#define DEBUG_PRINT5(fmt,a,b,c,d,e)
+#define DEBUG_PRINT6(fmt,a,b,c,d,e,f)
+
+
+#endif /* _DEBUG_H_ */

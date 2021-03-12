@@ -1,0 +1,1934 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 7/10/96: Initial version
+ */
+
+#include "MemCheck:MemCheck.h"
+#include <ctype.h>
+#include <stdio.h>
+#include <string.h>
+#include "strext.h"
+#include "swis.h"
+#include "kernel.h"
+#include "rmbase.h"
+#include "veneer.h"
+#include "error.h"
+#include "fsys_err.h"
+#include "fsys.h"
+#include "fspsup_a.h"
+#include "fspsup_b.h"
+#include "fspsup_c.h"
+#include "fspsup_d.h"
+
+#include "fspatch.h"
+
+// #define PRMENUM
+#define RecL2_CALLS (0)
+#define SHOW_CALLS (0)
+#define STREAM_CALLS (0)
+#define MC_CALLS (0)
+#define PRNT_CALLS (0)
+
+#define RECORD_CALLS (RecL2_CALLS || SHOW_CALLS || STREAM_CALLS || MC_CALLS || PRNT_CALLS)
+
+#define DEMO_LIMIT (16*1024)
+
+
+#define DEFAULT_ATTRIBUTES (FSYS_READ | FSYS_WRITE)
+
+#if PRNT_CALLS
+void Printf(char *fmt, ...)
+{
+    static char buf[256];
+    va_list args;
+
+    va_start(args, fmt);
+    vsprintf(buf, fmt, args);
+    printf("%s\n", buf);
+    va_end(args);
+}
+#endif
+
+#if MC_CALLS
+void Printf(char *fmt, ...)
+{
+    va_list args;
+    static char buf[256];
+
+    va_start(args, fmt);
+    vsprintf(buf, fmt, args);
+    va_end(args);
+    MemCheck_Printf("%s\n", buf);
+}
+#endif
+
+#if SHOW_CALLS
+void Printf(char *fmt, ...)
+{
+    static char *goz = NULL;
+    va_list args;
+
+    if(goz == NULL)
+    {
+        goz = Malloc(64*1024);
+        memset(goz, 0, 64*1024);
+    }
+    va_start(args, fmt);
+    vsprintf(goz, fmt, args);
+    goz += strlen(goz);
+    *goz++ = '\n';
+    va_end(args);
+}
+#endif
+
+#if STREAM_CALLS
+#include "tcp.h"
+#include "blocked.h"
+
+void Printf(char *fmt, ...)
+{
+    static tcp_conn_t conn = NULL;
+    static char buf[256];
+    va_list args;
+
+    ExceptTry
+    {
+        if(conn == NULL)
+        {
+            conn = TcpCall(TCP_PORT_ANY, 1777, TcpResolve("10.0.0.2"));
+            TcpSetNoDelay(conn);
+        }
+        va_start(args, fmt);
+        vsprintf(buf, fmt, args);
+        va_end(args);
+        strcat(buf, "\n");
+        TcpWrite(buf, strlen(buf), conn);
+        BlockedWait();
+    } ExceptCatch {}
+}
+#endif
+
+#if RecL2_CALLS
+char goz1[256] = {0};
+char goz2[256] = {0};
+
+void Printf(char *fmt, ...)
+{
+    va_list args;
+
+    strcpy(goz2, goz1);
+    va_start(args, fmt);
+    vsprintf(goz1, fmt, args);
+    va_end(args);
+}
+#endif
+
+#ifdef DEMO
+static void no_sup(void)
+{
+    Error("Operation not supported in demonstration version");
+}
+
+static void no_sup2(void)
+{
+    Error("Reading of files restricted to %dK in demo version", DEMO_LIMIT/1024);
+}
+#endif
+
+// static int begins_with(char *s1, char *s2)
+// {
+//     while(*s2)
+//     {
+//         if(toupper(*s1) != toupper(*s2))
+//             return 0;
+//         ++s1;
+//         ++s2;
+//     }
+//     return *s1 == '.';
+// }
+
+static int nonempty_dir(fsys_object_t f)
+{
+    fsys_object_t g;
+
+    if(FsysGetType(f) != FSYS_DIRECTORY)
+        return 0;
+    g = FsysIn(FsysDup(f));
+    if(g) FsysFree(g);
+    return g != NULL;
+}
+
+static fsys_object_t copy_object(fsys_object_t obj)
+{
+    fsys_object_t nobj;
+
+    nobj = FsysDup(obj);
+    FsysFree(obj);
+    return nobj;
+}
+
+static void FSEntry_Unsupported(_kernel_swi_regs *r, void *pw)
+{
+}
+
+static void FSEntry_Unsupported2(_kernel_swi_regs *r, void *pw, int im)
+{
+}
+
+
+
+static void FSEntry_Open(_kernel_swi_regs *r, void *pw, int im)
+{
+    volatile path_t path;
+    volatile fsys_object_t f;
+    char *name;
+    int update, fd;
+    fsys_image_t img;
+
+    name = (char *) r->r[1];
+    update = r->r[0] != 0;
+    fd = r->r[3];
+#ifdef DEMO
+    if(update) no_sup();
+#endif
+    img = im ? (fsys_image_t) r->r[6]
+             : FSPSpecialCacheLookUp(name, (char *) r->r[6]);
+    path = NULL;
+    f = NULL;
+    ExceptTry
+    {
+        path = FSPName2Path(name, img, im);
+        FSPCanIOpen(path, img, update);
+        f = FSPPath2Object(path, img);
+        if(f)
+        {
+            r->r[0] = 0;
+            if(FsysGetType(f) == FSYS_DIRECTORY)
+            {
+                r->r[0] |= 0x20000000;
+            }
+            else
+            {
+                if(FsysGetAttributes(f) & FSYS_WRITE)
+                    r->r[0] |= 0x80000000;
+                if(FsysGetAttributes(f) & FSYS_READ)
+                    r->r[0] |= 0x40000000;
+            }
+            r->r[2] = FsysGetBlockSize(f);
+            r->r[3] = FsysGetLength(f);
+#ifdef DEMO
+            if(r->r[3] > DEMO_LIMIT) no_sup2();
+#endif
+            ExceptTry
+            {
+                r->r[1] = (int) FsysOpen(f, update, fd); /* What if its a directory ??? */
+            }
+            ExceptCatch
+            {
+                if(update && (r->r[0] & 0x40000000))
+                {
+                    update = 0;
+                    r->r[0] &= ~0x80000000;
+                    r->r[1] = (int) FsysOpen(f, update, fd); /* What if its a directory ??? */
+                }
+                else
+                {
+                    ExceptRethrow();
+                }
+            }
+            r->r[4] = FsysGetSize((fsys_handle_t) r->r[1]);
+            FSPRecordOpening(path, img, (fsys_handle_t) r->r[1], update);
+        }
+        else
+        {
+            r->r[1] = 0;
+            FSPPathDestruct(path);
+        }
+    }
+    ExceptCatch
+    {
+        if(path) FSPPathDestruct(path);
+        if(f) FsysFree(f);
+        ExceptRethrow();
+    }
+}
+
+
+
+static void FSEntry_GetBytes(_kernel_swi_regs *r, void *pw)
+{
+    FsysRead((void *) r->r[2], r->r[4], r->r[3], (fsys_handle_t) r->r[1]);
+}
+
+
+
+static void FSEntry_PutBytes(_kernel_swi_regs *r, void *pw)
+{
+#ifdef DEMO
+    no_sup();
+    return;
+#endif
+    FsysWrite((void *) r->r[2], r->r[4], r->r[3], (fsys_handle_t) r->r[1]);
+}
+
+
+
+/* Read sequential file pointer */
+#define FSEntry_Args0 (FSEntry_Unsupported)
+
+/* Write sequential file pointer */
+#define FSEntry_Args1 (FSEntry_Unsupported)
+
+/* Read file extent */
+#define FSEntry_Args2 (FSEntry_Unsupported)
+
+/* Write file extent */
+static void FSEntry_Args3(_kernel_swi_regs *r, void *pw)
+{
+#ifdef DEMO
+    no_sup();
+    return;
+#endif
+    FsysLimitSize((fsys_handle_t) r->r[1], r->r[2]);
+    FsysSetLength(FsysHandle2File((fsys_handle_t) r->r[1]), r->r[2]);
+}
+
+/* Read size allocated to file */
+static void FSEntry_Args4(_kernel_swi_regs *r, void *pw)
+{
+    r->r[2] = FsysGetSize((fsys_handle_t) r->r[1]);
+}
+
+/* EOF check */
+#define FSEntry_Args5 (FSEntry_Unsupported)
+
+/* Notify of a flush */
+#define FSEntry_Args6 (FSEntry_Unsupported)
+
+/* Ensure file size */
+static void FSEntry_Args7(_kernel_swi_regs *r, void *pw)
+{
+#ifdef DEMO
+    no_sup();
+    return;
+#endif
+    FsysEnsureSize((fsys_handle_t) r->r[1], r->r[2]);
+    r->r[2] = FsysGetSize((fsys_handle_t) r->r[1]);
+}
+
+/* Write zeros to file */
+static void FSEntry_Args8(_kernel_swi_regs *r, void *pw)
+{
+    static char fsbuf[512];
+    int i, n;
+    fsys_handle_t fh;
+
+#ifdef DEMO
+    no_sup();
+    return;
+#endif
+    memset(fsbuf, 0, 512);
+    fh = (fsys_handle_t) r->r[1];
+    i = r->r[2];
+    for(n = r->r[3]; n > 0; n -= 512)
+    {
+        FsysWrite(fsbuf, i, 512, fh);
+        i += 512;
+    }
+}
+
+/* Read file datestamp */
+static void FSEntry_Args9(_kernel_swi_regs *r, void *pw)
+{
+    r->r[2] = 0;
+    r->r[3] = 0;
+}
+
+/* Inform of new image stamp */
+#define FSEntry_Args10 (FSEntry_Unsupported)
+
+
+
+/* Close an open file */
+static void FSEntry_Close(_kernel_swi_regs *r, void *pw)
+{
+    volatile fsys_object_t f;
+
+    ExceptTry
+    {
+        FSPRecordClosing((fsys_handle_t) r->r[1]);
+        f = FsysHandle2File((fsys_handle_t) r->r[1]);
+        FsysClose((fsys_handle_t) r->r[1]);
+        FsysFlushObject(f);
+        FsysFree(f);
+    }
+    ExceptCatch
+    {
+        FSPDropObjectFromCache(f);
+        FsysFree(f);
+        ExceptRethrow();
+    }
+}
+
+
+
+/* Save file */
+static void FSEntry_File0(_kernel_swi_regs *r, void *pw, int im)
+{
+    fsys_image_t img;
+    volatile path_t path;
+    volatile place_t p;
+    volatile fsys_object_t f;
+    volatile fsys_handle_t h;
+    volatile int is_new, length;
+    void *volatile buf;
+
+#ifdef DEMO
+    no_sup();
+    return;
+#endif
+    img = im ? (fsys_image_t) r->r[6]
+             : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6]);
+    path = NULL;
+    p = NULL;
+    f = NULL;
+    h = NULL;
+    buf = NULL;
+    is_new = 0;
+    MemCheck_RegisterMiscBlock((void *)r->r[4], r->r[5] - r->r[4]);
+    ExceptTry
+    {
+        path = FSPName2Path((char *) r->r[1], img, im);
+        FSPCanIOpen(path, img, 1);
+        p = FSPPath2Place(path, img);
+        if(p == NULL)
+            ErrorNum(ERR_NotFound);
+        f = FSPPath2Object(path, img);
+        if(f)
+        {
+            if(FsysGetAttributes(f) & FSYS_LOCKED)
+                ErrorNum(ERR_Locked);
+            length = FsysGetLength(f);
+        }
+        else
+        {
+            f = FSPPlace2NewFile(p);
+            is_new = 1;
+            FsysSetAttributes(f, DEFAULT_ATTRIBUTES);
+        }
+        FsysSetLoadAddr(f, r->r[2]);
+        FsysSetExecAddr(f, r->r[3]);
+        h = FsysOpen(f, 1, 0);
+        FsysEnsureSize(h, r->r[5] - r->r[4]);
+#if 0
+        /* Hack Hack Hack Hack ??? force error if protected disc */
+        if(r->r[5] - r->r[4] >= 512)
+        {
+            FsysWrite((void *)r->r[4], 0, r->r[5] - r->r[4], h);
+        }
+        else
+        {
+            buf = Malloc(512);
+            memcpy(buf, (void *)r->r[4], r->r[5] - r->r[4]);
+            FsysWrite(buf, 0, 512, h);
+        }
+#else
+        FsysWrite((void *)r->r[4], 0, r->r[5] - r->r[4], h);
+#endif
+        FsysLimitSize(h, r->r[5] - r->r[4]);
+        FsysClose(h); h = NULL;
+        FsysSetLength(f, r->r[5] - r->r[4]);
+        FsysFlushObject(f);
+        FsysFlushImage(img);
+        FSPPathDestruct(path);
+        FSPDestructPlace(p);
+        FsysFree(f);
+        if(buf) Free(buf);
+    }
+    ExceptCatch
+    {
+        MemCheck_UnRegisterMiscBlock((void *)r->r[4]);
+        if(h)
+        {
+            if(!is_new)
+            {
+                ExceptTry
+                {
+                    FsysLimitSize(h, length);
+                    FsysSetLength(f, length);
+                }
+                ExceptCatch {}
+            }
+            FsysClose(h);
+        }
+        if(f)
+        {
+            if(is_new)
+            {
+                ExceptTry
+                {
+                    FsysDelete(f);
+                }
+                ExceptCatch {}
+            }
+            FsysFree(f);
+        }
+        ExceptTry
+        {
+            FsysFlushImage(img);
+        }
+        ExceptCatch {}
+        if(buf) Free(buf);
+        if(p) FSPDestructPlace(p);
+        if(path) FSPPathDestruct(path);
+        FSPDropImageFromCache(img);
+        ExceptRethrow();
+    }
+    MemCheck_UnRegisterMiscBlock((void *)r->r[4]);
+}
+
+/* Write catalogue information */
+static void FSEntry_File1(_kernel_swi_regs *r, void *pw, int im)
+{
+    fsys_image_t img;
+    volatile fsys_object_t f;
+
+#ifdef DEMO
+    no_sup();
+    return;
+#endif
+    img = im ? (fsys_image_t) r->r[6]
+             : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6]);
+    f = FSPName2Object((char *) r->r[1], img, im);
+    /* Doesn't expand wildcards ??? */
+    if(f)
+    {
+        ExceptTry
+        {
+            FsysSetLoadAddr(f, r->r[2]);
+            FsysSetExecAddr(f, r->r[3]);
+            FsysSetAttributes(f, r->r[5]);
+            FsysFlushObject(f);
+            FsysFlushImage(img);
+            FsysFree(f);
+        }
+        ExceptCatch
+        {
+            FsysFree(f);
+            FSPDropImageFromCache(img);
+            ExceptRethrow();
+        }
+    }
+}
+
+/* Write load address */
+static void FSEntry_File2(_kernel_swi_regs *r, void *pw, int im)
+{
+    fsys_image_t img;
+    volatile fsys_object_t f;
+
+#ifdef DEMO
+    no_sup();
+    return;
+#endif
+    img = im ? (fsys_image_t) r->r[6]
+             : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6]);
+    f = FSPName2Object((char *) r->r[1], img, im);
+    /* Doesn't expand wildcards ??? */
+    if(f)
+    {
+        ExceptTry
+        {
+            FsysSetLoadAddr(f, r->r[2]);
+            FsysFlushObject(f);
+            FsysFlushImage(img);
+            FsysFree(f);
+        }
+        ExceptCatch
+        {
+            FsysFree(f);
+            FSPDropImageFromCache(img);
+            ExceptRethrow();
+        }
+    }
+}
+
+/* Write execution address */
+static void FSEntry_File3(_kernel_swi_regs *r, void *pw, int im)
+{
+    fsys_image_t img;
+    volatile fsys_object_t f;
+
+#ifdef DEMO
+    no_sup();
+    return;
+#endif
+    img = im ? (fsys_image_t) r->r[6]
+             : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6]);
+    f = FSPName2Object((char *) r->r[1], img, im);
+    /* Doesn't expand wildcards ??? */
+    if(f)
+    {
+        ExceptTry
+        {
+            FsysSetExecAddr(f, r->r[3]);
+            FsysFlushObject(f);
+            FsysFlushImage(img);
+            FsysFree(f);
+        }
+        ExceptCatch
+        {
+            FsysFree(f);
+            FSPDropImageFromCache(img);
+            ExceptRethrow();
+        }
+    }
+}
+
+/* Write attributes */
+static void FSEntry_File4(_kernel_swi_regs *r, void *pw, int im)
+{
+    fsys_image_t img;
+    volatile fsys_object_t f;
+
+#ifdef DEMO
+    no_sup();
+    return;
+#endif
+    img = im ? (fsys_image_t) r->r[6]
+             : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6]);
+    f = FSPName2Object((char *) r->r[1], img, im);
+    /* Doesn't expand wildcards ??? */
+    if(f)
+    {
+        ExceptTry
+        {
+            FsysSetAttributes(f, r->r[5]);
+            FsysFlushObject(f);
+            FsysFlushImage(img);
+            FsysFree(f);
+        }
+        ExceptCatch
+        {
+            FsysFree(f);
+            FSPDropImageFromCache(img);
+            ExceptRethrow();
+        }
+    }
+}
+
+/* Read catalogue information */
+static void FSEntry_File5(_kernel_swi_regs *r, void *pw, int im)
+{
+    fsys_image_t img;
+    volatile fsys_object_t f;
+
+    img = im ? (fsys_image_t) r->r[6]
+             : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6]);
+    f = FSPName2Object((char *) r->r[1], img, im);
+    if(f)
+    {
+        ExceptTry
+        {
+            r->r[0] = FsysGetType(f);
+            r->r[2] = FsysGetLoadAddr(f);
+            r->r[3] = FsysGetExecAddr(f);
+            r->r[4] = FsysGetLength(f);
+            r->r[5] = FsysGetAttributes(f);
+#if RECORD_CALLS && 0
+            Printf(" type  = 0x%08x\n", r->r[0]);
+            Printf(" laddr = 0x%08x\n", r->r[2]);
+            Printf(" eaddr = 0x%08x\n", r->r[3]);
+            Printf(" len   = 0x%08x\n", r->r[4]);
+            Printf(" attr  = 0x%08x\n", r->r[5]);
+#endif
+            FsysFree(f);
+        }
+        ExceptCatch
+        {
+            FsysFree(f);
+            ExceptRethrow();
+        }
+    }
+    else
+    {
+        r->r[0] = 0;
+    }
+}
+
+/* Delete object */
+static void FSEntry_File6(_kernel_swi_regs *r, void *pw, int im)
+{
+    fsys_image_t img;
+    volatile path_t path;
+    volatile fsys_object_t f;
+
+#ifdef DEMO
+    no_sup();
+    return;
+#endif
+    img = im ? (fsys_image_t) r->r[6]
+             : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6]);
+    path = NULL;
+    f = NULL;
+    ExceptTry
+    {
+        path = FSPName2Path((char *) r->r[1], img, im);
+        FSPCanIDelete(path, img);
+        f = FSPPath2Object(path, img);
+        if(f)
+        {
+            r->r[0] = FsysGetType(f);
+            r->r[2] = FsysGetLoadAddr(f);
+            r->r[3] = FsysGetExecAddr(f);
+            r->r[4] = FsysGetLength(f);
+            r->r[5] = FsysGetAttributes(f);
+            if((r->r[5] & FSYS_LOCKED))
+                ErrorNum(ERR_Locked);
+            if(nonempty_dir(f))
+                ErrorNum(ERR_DirNotEmpty);
+            FsysDelete(f);
+            FSPDropObjectFromCache(f);
+            FsysFlushImage(img);
+            FsysFree(f);
+        }
+        else
+        {
+            r->r[0] = 0;
+        }
+        FSPPathDestruct(path);
+    }
+    ExceptCatch
+    {
+        ExceptTry
+        {
+            FsysFlushImage(img);
+        }
+        ExceptCatch {}
+        if(path) FSPPathDestruct(path);
+        if(f) FsysFree(f);
+        FSPDropImageFromCache(img);
+        ExceptRethrow();
+    }
+}
+
+/* Create file */
+static void FSEntry_File7(_kernel_swi_regs *r, void *pw, int im)
+{
+    fsys_image_t img;
+    volatile path_t path;
+    volatile place_t p;
+    volatile fsys_object_t f;
+    volatile fsys_handle_t h;
+    volatile int is_new, length;
+
+#ifdef DEMO
+    no_sup();
+    return;
+#endif
+    img = im ? (fsys_image_t) r->r[6]
+             : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6]);
+    path = NULL;
+    p = NULL;
+    f = NULL;
+    h = NULL;
+    is_new = 0;
+    ExceptTry
+    {
+        path = FSPName2Path((char *) r->r[1], img, im);
+        FSPCanIOpen(path, img, 1);
+        p = FSPPath2Place(path, img);
+        if(p == NULL)
+            ErrorNum(ERR_NotFound);
+        f = FSPPath2Object(path, img);
+        if(f)
+        {
+           if(FsysGetAttributes(f) & FSYS_LOCKED)
+                ErrorNum(ERR_Locked);
+            length = FsysGetLength(f);
+        }
+        else
+        {
+            f = FSPPlace2NewFile(p);
+            is_new = 1;
+            FsysSetAttributes(f, DEFAULT_ATTRIBUTES);
+        }
+        FsysSetLoadAddr(f, r->r[2]);
+        FsysSetExecAddr(f, r->r[3]);
+        h = FsysOpen(f, 1, 0);
+        FsysEnsureSize(h, r->r[5] - r->r[4]);
+        FsysLimitSize(h, r->r[5] - r->r[4]);
+        FsysClose(h); h = NULL;
+        FsysSetLength(f, r->r[5] - r->r[4]);
+        FsysFlushObject(f);
+        FsysFlushImage(img);
+        FSPDestructPlace(p);
+        FSPPathDestruct(path);
+        FsysFree(f);
+    }
+    ExceptCatch
+    {
+        if(h)
+        {
+            if(!is_new)
+            {
+                ExceptTry
+                {
+                    FsysLimitSize(h, length);
+                    FsysSetLength(f, length);
+                }
+                ExceptCatch {}
+            }
+            FsysClose(h);
+        }
+        if(f)
+        {
+            if(is_new)
+            {
+                ExceptTry
+                {
+                FsysDelete(f);
+                }
+                ExceptCatch {}
+            }
+            FsysFree(f);
+        }
+        ExceptTry
+        {
+            FsysFlushImage(img);
+        }
+        ExceptCatch {}
+        if(p) FSPDestructPlace(p);
+        if(path) FSPPathDestruct(path);
+        FSPDropImageFromCache(img);
+        ExceptRethrow();
+    }
+}
+
+/* Create directory */
+static void FSEntry_File8(_kernel_swi_regs *r, void *pw, int im)
+{
+    fsys_image_t img;
+    volatile place_t p;
+    volatile fsys_object_t f;
+
+#ifdef DEMO
+    no_sup();
+    return;
+#endif
+    img = im ? (fsys_image_t) r->r[6]
+             : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6]);
+    p = FSPName2Place((char *) r->r[1], img, im);
+    if(p == NULL)
+        ErrorNum(ERR_NotFound);
+    f = NULL;
+    ExceptTry
+    {
+        f = FSPName2Object((char *) r->r[1], img, im);
+        if(!f)
+        {
+            f = FSPPlace2NewDirectory(p);
+            FsysSetAttributes(f, DEFAULT_ATTRIBUTES);
+        }
+        FsysSetLoadAddr(f, r->r[2]);
+        FsysSetExecAddr(f, r->r[3]);
+        FsysFlushObject(f);
+        FsysFlushImage(img);
+        FSPDestructPlace(p);
+        FsysFree(f);
+    }
+    ExceptCatch
+    {
+        ExceptTry
+        {
+            FsysFlushImage(img);
+        }
+        ExceptCatch {}
+        if(f) FsysFree(f);
+        FSPDestructPlace(p);
+        FSPDropImageFromCache(img);
+        ExceptRethrow();
+    }
+}
+
+/* Read catalogue information (no length) */
+#define FSEntry_File9 (FSEntry_Unsupported2)
+
+/* Read block size */
+static void FSEntry_File10(_kernel_swi_regs *r, void *pw, int im)
+{
+    fsys_image_t img;
+    volatile fsys_object_t f;
+
+    img = im ? (fsys_image_t) r->r[6]
+             : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6]);
+    f = FSPName2Object((char *) r->r[1], img, im);
+    if(!f)
+        ErrorNum(ERR_NotFound);
+    ExceptTry
+    {
+        r->r[2] = FsysGetBlockSize(f);
+        FsysFree(f);
+    }
+    ExceptCatch
+    {
+        FsysFree(f);
+        ExceptRethrow();
+    }
+}
+
+
+
+/* Set current directory */
+#define FSEntry_Func0 (FSEntry_Unsupported2)
+
+/* Set library directory */
+#define FSEntry_Func1 (FSEntry_Unsupported2)
+
+/* Catalogue directory */
+#define FSEntry_Func2 (FSEntry_Unsupported2)
+
+/* Examine directory */
+#define FSEntry_Func3 (FSEntry_Unsupported2)
+
+/* Catalogue library directory */
+#define FSEntry_Func4 (FSEntry_Unsupported2)
+
+/* Examine library directory */
+#define FSEntry_Func5 (FSEntry_Unsupported2)
+
+/* Examine object(s) */
+#define FSEntry_Func6 (FSEntry_Unsupported2)
+
+/* Set filing system options */
+#define FSEntry_Func7 (FSEntry_Unsupported2)
+
+/* Rename object */
+static void FSEntry_Func8(_kernel_swi_regs *r, void *pw, int im)
+{
+    fsys_image_t img1, img2;
+    volatile path_t path1, path2;
+    volatile place_t p1, p2;
+    volatile fsys_object_t f1, f2;
+    char *name1, *name2;
+    int nested;
+
+#ifdef DEMO
+    no_sup();
+    return;
+#endif
+    img1 = im ? (fsys_image_t) r->r[6]
+             : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6]);
+    img2 = im ? (fsys_image_t) r->r[7]
+             : FSPSpecialCacheLookUp((char *) r->r[2], (char *) r->r[7]);
+    if(img1 != img2) return;
+    name1 = (char *) r->r[1];
+    name2 = (char *) r->r[2];
+    path1 = path2 = NULL;
+    p1 = p2 = NULL;
+    f1 = f2 = NULL;
+    ExceptTry
+    {
+        path1 = FSPName2Path(name1, img1, im);
+        path2 = FSPName2Path(name2, img2, im);
+        nested = FSPSubPath(path1, path2);
+        FSPCanIDelete(path1, img1);
+        p1 = FSPPath2Place(path1, img1);
+        if(p1)
+            f1 = FSPPath2Object(path1, img1);
+        p2 = FSPPath2Place(path2, img2);
+        if(p2 == NULL)
+            ErrorNum(ERR_NotFound);
+        if(!FSPSamePath(path1, path2))
+            f2 = FSPPath2Object(path2, img2);
+        if(!nested && f1 && !f2)
+        {
+            if(f2)
+            {
+                FsysFree(f2);
+                f2 = NULL;
+            }
+            if(FSPSameDirPath(path1, path2))
+            {
+                FSPRename(f1, p2);
+            }
+            else
+            {
+                switch(FsysGetType(f1))
+                {
+                    case FSYS_FILE:
+                        f2 = FSPPlace2NewFile(p2);
+                        break;
+                    case FSYS_DIRECTORY:
+                        f2 = FSPPlace2NewDirectory(p2);
+                        break;
+                    default:
+                        Error("Object is neither a file or directory");
+                        break;
+                }
+                FsysSetLength(f2, FsysGetLength(f1));
+                FsysSetLoadAddr(f2, FsysGetLoadAddr(f1));
+                FsysSetExecAddr(f2, FsysGetExecAddr(f1));
+                FsysSetAttributes(f2, FsysGetAttributes(f1));
+                FsysMove(f1, f2);
+                FsysFlushObject(f2);
+                FsysDelete(f1);
+                FSPDropObjectFromCache(f1);
+            }
+            r->r[1] = 0;
+        }
+        FsysFlushImage(img1);
+        if(f2) FsysFree(f2);
+        if(f1) FsysFree(f1);
+        if(p1) FSPDestructPlace(p1);
+        if(p2) FSPDestructPlace(p2);
+        if(path1) FSPPathDestruct(path1);
+        if(path2) FSPPathDestruct(path2);
+    }
+    ExceptCatch
+    {
+        ExceptTry
+        {
+            FsysFlushImage(img1);
+        }
+        ExceptCatch {}
+        if(f1) FsysFree(f1);
+        if(f2) FsysFree(f2);
+        if(p1) FSPDestructPlace(p1);
+        if(p2) FSPDestructPlace(p2);
+        if(path1) FSPPathDestruct(path1);
+        if(path2) FSPPathDestruct(path2);
+        FSPDropImageFromCache(img1);
+        ExceptRethrow();
+    }
+}
+
+/* Access object(s) */
+#define FSEntry_Func9 (FSEntry_Unsupported2)
+
+/* Boot filing system */
+#define FSEntry_Func10 (FSEntry_Unsupported2)
+
+/* Read name and boot (*OPT 4) option of disc */
+static void FSEntry_Func11(_kernel_swi_regs *r, void *pw, int im)
+{
+    _kernel_swi_regs regs;
+    int c;
+
+    regs.r[0] = r->r[2];
+    regs.r[1] = r->r[2] + 2;
+    _kernel_swi_c(OS_ValidateAddress, &regs, &regs, &c);
+    if(c) ErrorNum(ERR_BadWrt);
+    MemCheck_RegisterMiscBlock((void *) r->r[2], 2);
+    ((char *) r->r[2])[0] = 0;
+    ((char *) r->r[2])[1] = 0;
+    MemCheck_UnRegisterMiscBlock((void *) r->r[2]);
+}
+
+/* Read current directory name and privilege byte */
+#define FSEntry_Func12 (FSEntry_Unsupported2)
+
+/* Read library directory name and privilege byte */
+#define FSEntry_Func13 (FSEntry_Unsupported2)
+
+/* Read directory entries */
+static void FSEntry_Func14(_kernel_swi_regs *r, void *pw, int im)
+{
+    fsys_image_t img;
+    volatile fsys_object_t f;
+    int len, blen, cblen, i, n;
+    char *buf;
+#ifdef MemCheck_MEMCHECK
+    char *volatile mcbuf;
+
+    mcbuf = (char *) r->r[2];
+    MemCheck_RegisterMiscBlock(mcbuf, r->r[5]);
+#endif
+    img = im ? (fsys_image_t) r->r[6]
+             : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6]);
+    f = NULL;
+    ExceptTry
+    {
+        i = r->r[4];
+        if(!FSPCatCacheRetrieve((char *) r->r[1], img, i, (fsys_object_t *)&f))
+        {
+            f = FSPName2Object((char *) r->r[1], img, im);
+            if(!f) ErrorNum(ERR_NotFound);
+            if(FsysGetType(f) != FSYS_DIRECTORY)
+                ErrorNum(ERR_NotFound);
+            f = copy_object(f);
+            f = FsysIn(f);
+            for(i = 0; i < r->r[4] && f; i++)
+                f = FsysNext(f);
+        }
+        cblen = 11 * r->r[3];
+        blen = r->r[5];
+        buf = (char *) r->r[2];
+        for(n = 0; n < r->r[3] && f; n++)
+        {
+            len = strlen(FsysGetName(f)) + 1;
+            if(blen < len)
+                break;
+            if(cblen < len && n > 0)
+                break;
+            memcpy(buf, FsysGetName(f), len);
+            buf += len;
+            blen -= len;
+            cblen -= len;
+            i++;
+            f = FsysNext(f);
+        }
+        r->r[3] = n;
+#ifdef PRMENUM
+        r->r[4] = f ? i : -1;
+        if(f) FSPCatCacheHold((char *) r->r[1], img, i, f);
+#else
+        r->r[4] = n ? i : -1;
+        if(n) FSPCatCacheHold((char *) r->r[1], img, i, f);
+#endif
+    }
+    ExceptCatch
+    {
+        MemCheck_UnRegisterMiscBlock(mcbuf);
+        if(f) FsysFree(f);
+        ExceptRethrow();
+    }
+    MemCheck_UnRegisterMiscBlock(mcbuf);
+}
+
+/* Read directory entries and information */
+static void FSEntry_Func15(_kernel_swi_regs *r, void *pw, int im)
+{
+    fsys_image_t img;
+    volatile fsys_object_t f;
+    int slen, rlen, blen, i, n;
+    char *buf;
+    int *ibuf;
+#ifdef MemCheck_MEMCHECK
+    char *volatile mcbuf;
+
+    mcbuf = (char *) r->r[2];
+    MemCheck_RegisterMiscBlock(mcbuf, r->r[5]);
+#endif
+    img = im ? (fsys_image_t) r->r[6]
+             : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6]);
+    f = NULL;
+    ExceptTry
+    {
+        i = r->r[4];
+        if(!FSPCatCacheRetrieve((char *) r->r[1], img, i, (fsys_object_t *)&f))
+        {
+            f = FSPName2Object((char *) r->r[1], img, im);
+            if(!f) ErrorNum(ERR_NotFound);
+            if(FsysGetType(f) != FSYS_DIRECTORY)
+                ErrorNum(ERR_NotFound);
+            f = copy_object(f);
+            f = FsysIn(f);
+            for(i = 0; i < r->r[4] && f; i++)
+                f = FsysNext(f);
+        }
+        blen = r->r[5];
+        buf = (char *) r->r[2];
+        for(n = 0; n < r->r[3] && f; n++)
+        {
+            slen = strlen(FsysGetName(f)) + 1;
+            rlen = slen + 20 + 3 & ~3;
+            if(blen < rlen)
+                break;
+            ibuf = (int *) buf;
+            ibuf[0] = FsysGetLoadAddr(f);
+            ibuf[1] = FsysGetExecAddr(f);
+            ibuf[2] = FsysGetLength(f);
+            ibuf[3] = FsysGetAttributes(f);
+            ibuf[4] = FsysGetType(f);
+            memcpy(buf+20, FsysGetName(f), slen);
+            buf += rlen;
+            blen -= rlen;
+            i++;
+            f = FsysNext(f);
+        }
+        r->r[3] = n;
+#ifdef PRMENUM
+        r->r[4] = f ? i : -1;
+        if(f) FSPCatCacheHold((char *) r->r[1], img, i, f);
+#else
+        r->r[4] = n ? i : -1;
+        if(n) FSPCatCacheHold((char *) r->r[1], img, i, f);
+#endif
+    }
+    ExceptCatch
+    {
+        MemCheck_UnRegisterMiscBlock(mcbuf);
+        if(f) FsysFree(f);
+        ExceptRethrow();
+    }
+    MemCheck_UnRegisterMiscBlock(mcbuf);
+}
+
+/* Shut down */
+static void FSEntry_Func16(_kernel_swi_regs *r, void *pw, int im)
+{
+    FSPSpecialCacheFlush();
+}
+
+/* Print start up banner */
+#define FSEntry_Func17 (FSEntry_Unsupported2)
+
+/* Set directory contexts */
+#define FSEntry_Func18 (FSEntry_Unsupported2)
+
+/* Read directory entries and information */
+static void FSEntry_Func19(_kernel_swi_regs *r, void *pw, int im)
+{
+    fsys_image_t img;
+    volatile fsys_object_t f;
+    int slen, rlen, blen, i, n;
+    char *buf;
+    int *ibuf;
+#ifdef MemCheck_MEMCHECK
+    char *volatile mcbuf;
+
+    mcbuf = (char *) r->r[2];
+    MemCheck_RegisterMiscBlock(mcbuf, r->r[5]);
+#endif
+    img = im ? (fsys_image_t) r->r[6]
+             : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6]);
+    f = NULL;
+    ExceptTry
+    {
+        i = r->r[4];
+        if(!FSPCatCacheRetrieve((char *) r->r[1], img, i, (fsys_object_t *)&f))
+        {
+            f = FSPName2Object((char *) r->r[1], img, im);
+            if(!f) ErrorNum(ERR_NotFound);
+            if(FsysGetType(f) != FSYS_DIRECTORY)
+                ErrorNum(ERR_NotFound);
+            f = copy_object(f);
+            f = FsysIn(f);
+            for(i = 0; i < r->r[4] && f; i++)
+                f = FsysNext(f);
+        }
+        blen = r->r[5];
+        buf = (char *) r->r[2];
+        for(n = 0; n < r->r[3] && f; n++)
+        {
+            slen = strlen(FsysGetName(f)) + 1;
+            rlen = slen + 29 + 3 & ~3;
+            if(blen < rlen)
+                break;
+            ibuf = (int *) buf;
+            ibuf[0] = FsysGetLoadAddr(f);
+            ibuf[1] = FsysGetExecAddr(f);
+            ibuf[2] = FsysGetLength(f);
+            ibuf[3] = FsysGetAttributes(f);
+            ibuf[4] = FsysGetType(f);
+            ibuf[5] = 0;
+            if((ibuf[0] & 0xFFF00000) == 0xFFF00000)
+            {
+                ibuf[6] = ibuf[1];
+                buf[28] = buf[0];
+            }
+            else
+            {
+                ibuf[6] = 0;
+                buf[28] = 0;
+            }
+            memcpy(buf+29, FsysGetName(f), slen);
+            buf += rlen;
+            blen -= rlen;
+            i++;
+            f = FsysNext(f);
+        }
+        r->r[3] = n;
+#ifdef PRMENUM
+        r->r[4] = f ? i : -1;
+        if(f) FSPCatCacheHold((char *) r->r[1], img, i, f);
+#else
+        r->r[4] = n ? i : -1;
+        if(n) FSPCatCacheHold((char *) r->r[1], img, i, f);
+#endif
+    }
+    ExceptCatch
+    {
+        MemCheck_UnRegisterMiscBlock(mcbuf);
+        if(f) FsysFree(f);
+        ExceptRethrow();
+    }
+    MemCheck_UnRegisterMiscBlock(mcbuf);
+}
+
+/* Output full information on object(s) */
+#define FSEntry_Func20 (FSEntry_Unsupported2)
+
+/* Notification of new image */
+static void FSEntry_Func21(_kernel_swi_regs *r, void *pw, int im)
+{
+    r->r[1] = (int) FsysImageFromFileHandle(r->r[1]);
+}
+
+/* Notification that image is about to be closed */
+static void FSEntry_Func22(_kernel_swi_regs *r, void *pw, int im)
+{
+    FSPCatCacheDrop();
+    FSPDropImageFromCache((fsys_image_t) r->r[1]);
+    FsysFlushImage((fsys_image_t) r->r[1]);
+    FsysKillImage((fsys_image_t) r->r[1]);
+}
+
+/* canonicalise special field and disc name */
+static void FSEntry_Func23(_kernel_swi_regs *r, void *pw, int im)
+{
+    r->r[3] = r->r[4] = 0;     /* Null transformation */
+}
+
+/* Resolve wildcard */
+static void FSEntry_Func24(_kernel_swi_regs *r, void *pw, int im)
+{
+    r->r[4] = -1;
+}
+
+/* Read defect list */
+#define FSEntry_Func25 (FSEntry_Unsupported2)
+
+/* Add a defect */
+#define FSEntry_Func26 (FSEntry_Unsupported2)
+
+/* Read boot option */
+#define FSEntry_Func27 (FSEntry_Unsupported2)
+
+/* Write boot option */
+#define FSEntry_Func28 (FSEntry_Unsupported2)
+
+/* Read used space map */
+#define FSEntry_Func29 (FSEntry_Unsupported2)
+
+/* Read free space */
+static void FSEntry_Func30(_kernel_swi_regs *r, void *pw, int im)
+{
+    int64 total, free;
+
+    FsysSpace(im ? (fsys_image_t) r->r[6]
+                 : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6])
+              , &total, &free);
+    r->r[0] = free.high ? 0xffffffff : free.low;
+    r->r[2] = total.high ? 0xffffffff : total.low;
+    r->r[1] = r->r[0];
+}
+
+/* Name image */
+static void FSEntry_Func31(_kernel_swi_regs *r, void *pw, int im)
+{
+    FsysSetDiscName(im ? (fsys_image_t) r->r[6]
+                 : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6])
+              , (char *)r->r[2]);
+}
+
+/* Stamp image */
+static void FSEntry_Func32(_kernel_swi_regs *r, void *pw, int im)
+{
+    FsysStamp(im ? (fsys_image_t) r->r[6]
+                 : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6])
+              , r->r[2]);
+}
+
+/* Get usage of offset */
+#define FSEntry_Func33 (FSEntry_Unsupported2)
+
+/* Notification of changed directory */
+#define FSEntry_Func34 (FSEntry_Unsupported2)
+
+/* Read free space 64 */
+static void FSEntry_Func35(_kernel_swi_regs *r, void *pw, int im)
+{
+    int64 total, free;
+
+    FsysSpace(im ? (fsys_image_t) r->r[6]
+                 : FSPSpecialCacheLookUp((char *) r->r[1], (char *) r->r[6])
+              , &total, &free);
+    r->r[0] = free.low;
+    r->r[1] = free.high;
+    r->r[2] = free.high ? 0xffffffff : free.low;
+    r->r[3] = total.low;
+    r->r[4] = total.high;
+#if RECORD_CALLS
+        Printf("Free = 0x%08x%08x", free.high, free.low);
+        Printf("Total = 0x%08x%08x", total.high, total.low);
+#endif
+}
+
+
+/* Defect list 64 */
+#define FSEntry_Func36 (FSEntry_Unsupported2)
+
+/* Add defect 64 */
+#define FSEntry_Func37 (FSEntry_Unsupported2)
+
+
+
+/* Get/put bytes from/to an unbuffered file */
+#define FSEntry_GBPB (FSEntry_Unsupported)
+
+
+
+static _kernel_oserror *FSEntry_OpenE(_kernel_swi_regs *r, void *pw)
+{
+#ifdef MemCheck_MEMCHECK
+    volatile int t;
+
+#endif
+    ExceptTry
+    {
+        FsysEnter();
+    }
+    ExceptCatch
+    {
+        return ExceptCaught();
+    }
+#ifdef MemCheck_MEMCHECK
+    MemCheck_RegisterMiscBlock(r, sizeof(*r));
+    MemCheck_RegisterMiscBlock_String((char *) r->r[1]);
+    t = r->r[1];
+#endif
+    ExceptTry
+    {
+#if RECORD_CALLS
+        Printf("Open %d", r->r[0]);
+#endif
+        FSEntry_Open(r, pw, 0);
+    }
+    ExceptCatch
+    {
+        MemCheck_UnRegisterMiscBlock((void *) t);
+        MemCheck_UnRegisterMiscBlock(r);
+        FsysLeave();
+        return ExceptCaught();
+    }
+    MemCheck_UnRegisterMiscBlock((void *) t);
+    MemCheck_UnRegisterMiscBlock(r);
+    FsysLeave();
+    return 0;
+}
+
+static _kernel_oserror *ImageEntry_OpenE(_kernel_swi_regs *r, void *pw)
+{
+#ifdef MemCheck_MEMCHECK
+    volatile int t;
+
+#endif
+    ExceptTry
+    {
+        FsysEnter();
+    }
+    ExceptCatch
+    {
+        return ExceptCaught();
+    }
+#ifdef MemCheck_MEMCHECK
+    MemCheck_RegisterMiscBlock(r, sizeof(*r));
+    MemCheck_RegisterMiscBlock_String((char *) r->r[1]);
+    t = r->r[1];
+#endif
+    ExceptTry
+    {
+#if RECORD_CALLS
+        Printf("Open %d", r->r[0]);
+#endif
+        FSEntry_Open(r, pw, 1);
+    }
+    ExceptCatch
+    {
+        MemCheck_UnRegisterMiscBlock((void *) t);
+        MemCheck_UnRegisterMiscBlock(r);
+        FsysLeave();
+        return ExceptCaught();
+    }
+    MemCheck_UnRegisterMiscBlock((void *) t);
+    MemCheck_UnRegisterMiscBlock(r);
+    FsysLeave();
+    return 0;
+}
+
+static _kernel_oserror *FSEntry_GetBytesE(_kernel_swi_regs *r, void *pw)
+{
+#ifdef MemCheck_MEMCHECK
+    volatile int t;
+
+#endif
+    ExceptTry
+    {
+        FsysEnter();
+    }
+    ExceptCatch
+    {
+        return ExceptCaught();
+    }
+#ifdef MemCheck_MEMCHECK
+    MemCheck_RegisterMiscBlock(r, sizeof(*r));
+    MemCheck_RegisterMiscBlock((void *) r->r[2], r->r[3]);
+    t = r->r[2];
+#endif
+    ExceptTry
+    {
+#if RECORD_CALLS
+        Printf("GetBytes");
+#endif
+        FSEntry_GetBytes(r, pw);
+    }
+    ExceptCatch
+    {
+        MemCheck_UnRegisterMiscBlock((void *) t);
+        MemCheck_UnRegisterMiscBlock(r);
+        FsysLeave();
+        return ExceptCaught();
+    }
+    MemCheck_UnRegisterMiscBlock((void *) t);
+    MemCheck_UnRegisterMiscBlock(r);
+    FsysLeave();
+    return 0;
+}
+
+#define ImageEntry_GetBytesE (FSEntry_GetBytesE)
+
+static _kernel_oserror *FSEntry_PutBytesE(_kernel_swi_regs *r, void *pw)
+{
+#ifdef MemCheck_MEMCHECK
+    volatile int t;
+
+#endif
+    ExceptTry
+    {
+        FsysEnter();
+    }
+    ExceptCatch
+    {
+        return ExceptCaught();
+    }
+#ifdef MemCheck_MEMCHECK
+    MemCheck_RegisterMiscBlock(r, sizeof(*r));
+    MemCheck_RegisterMiscBlock((void *) r->r[2], r->r[3]);
+    t = r->r[2];
+#endif
+    ExceptTry
+    {
+#if RECORD_CALLS
+        Printf("PutBytes");
+#endif
+        FSEntry_PutBytes(r, pw);
+    }
+    ExceptCatch
+    {
+        MemCheck_UnRegisterMiscBlock((void *) t);
+        MemCheck_UnRegisterMiscBlock(r);
+        FsysLeave();
+        return ExceptCaught();
+    }
+    MemCheck_UnRegisterMiscBlock((void *) t);
+    MemCheck_UnRegisterMiscBlock(r);
+    FsysLeave();
+    return 0;
+}
+
+#define ImageEntry_PutBytesE (FSEntry_PutBytesE)
+
+static _kernel_oserror *FSEntry_ArgsE(_kernel_swi_regs *r, void *pw)
+{
+    static void (*FSEntry_ArgsA[])(_kernel_swi_regs *, void *) =
+    {
+        FSEntry_Args0, FSEntry_Args1, FSEntry_Args2, FSEntry_Args3,
+        FSEntry_Args4, FSEntry_Args5, FSEntry_Args6, FSEntry_Args7,
+        FSEntry_Args8, FSEntry_Args9, FSEntry_Args10
+    };
+
+    ExceptTry
+    {
+        FsysEnter();
+    }
+    ExceptCatch
+    {
+        return ExceptCaught();
+    }
+    MemCheck_RegisterMiscBlock(r, sizeof(*r));
+    ExceptTry
+    {
+#if RECORD_CALLS
+        Printf("Args %d", r->r[0]);
+#endif
+        if(r->r[0] < 11) FSEntry_ArgsA[r->r[0]](r, pw);
+    }
+    ExceptCatch
+    {
+        MemCheck_UnRegisterMiscBlock(r);
+        FsysLeave();
+        return ExceptCaught();
+    }
+    MemCheck_UnRegisterMiscBlock(r);
+    FsysLeave();
+    return 0;
+}
+
+#define ImageEntry_ArgsE (FSEntry_ArgsE)
+
+static _kernel_oserror *FSEntry_CloseE(_kernel_swi_regs *r, void *pw)
+{
+    ExceptTry
+    {
+        FsysEnter();
+    }
+    ExceptCatch
+    {
+        return ExceptCaught();
+    }
+    MemCheck_RegisterMiscBlock(r, sizeof(*r));
+    ExceptTry
+    {
+#if RECORD_CALLS
+        Printf("Close");
+#endif
+        FSEntry_Close(r, pw);
+    }
+    ExceptCatch
+    {
+        MemCheck_UnRegisterMiscBlock(r);
+        FsysLeave();
+        return ExceptCaught();
+    }
+    MemCheck_UnRegisterMiscBlock(r);
+    FsysLeave();
+    return 0;
+}
+
+#define ImageEntry_CloseE (FSEntry_CloseE)
+
+static void (*FSEntry_FileA[])(_kernel_swi_regs *, void *, int) =
+{
+    FSEntry_File0, FSEntry_File1, FSEntry_File2, FSEntry_File3,
+    FSEntry_File4, FSEntry_File5, FSEntry_File6, FSEntry_File7,
+    FSEntry_File8, FSEntry_File9, FSEntry_File10
+};
+
+static _kernel_oserror *FSEntry_FileE(_kernel_swi_regs *r, void *pw)
+{
+#ifdef MemCheck_MEMCHECK
+    volatile int t;
+
+#endif
+    ExceptTry
+    {
+        FsysEnter();
+    }
+    ExceptCatch
+    {
+        return ExceptCaught();
+    }
+#ifdef MemCheck_MEMCHECK
+    MemCheck_RegisterMiscBlock(r, sizeof(*r));
+    MemCheck_RegisterMiscBlock_String((char *) r->r[1]);
+    t = r->r[1];
+#endif
+    ExceptTry
+    {
+#if RECORD_CALLS
+        Printf("File %d %s", r->r[0], (char *) r->r[1]);
+#endif
+        if(r->r[0] < 11) FSEntry_FileA[r->r[0]](r, pw, 0);
+    }
+    ExceptCatch
+    {
+        MemCheck_UnRegisterMiscBlock((void *) t);
+        MemCheck_UnRegisterMiscBlock(r);
+        FsysLeave();
+        return ExceptCaught();
+    }
+    MemCheck_UnRegisterMiscBlock((void *) t);
+    MemCheck_UnRegisterMiscBlock(r);
+    FsysLeave();
+    return 0;
+}
+
+static _kernel_oserror *ImageEntry_FileE(_kernel_swi_regs *r, void *pw)
+{
+#ifdef MemCheck_MEMCHECK
+    volatile int t;
+
+#endif
+    ExceptTry
+    {
+        FsysEnter();
+    }
+    ExceptCatch
+    {
+        return ExceptCaught();
+    }
+#ifdef MemCheck_MEMCHECK
+    MemCheck_RegisterMiscBlock(r, sizeof(*r));
+    MemCheck_RegisterMiscBlock_String((char *) r->r[1]);
+    t = r->r[1];
+#endif
+    ExceptTry
+    {
+#if RECORD_CALLS
+        Printf("File %d %s", r->r[0], (char *) r->r[1]);
+#endif
+        if(r->r[0] < 11) FSEntry_FileA[r->r[0]](r, pw, 1);
+    }
+    ExceptCatch
+    {
+        MemCheck_UnRegisterMiscBlock((void *) t);
+        MemCheck_UnRegisterMiscBlock(r);
+        FsysLeave();
+        return ExceptCaught();
+    }
+    MemCheck_UnRegisterMiscBlock((void *) t);
+    MemCheck_UnRegisterMiscBlock(r);
+    FsysLeave();
+    return 0;
+}
+
+static void (*FSEntry_FuncA[])(_kernel_swi_regs *, void *, int) =
+{
+    FSEntry_Func0, FSEntry_Func1, FSEntry_Func2, FSEntry_Func3,
+    FSEntry_Func4, FSEntry_Func5, FSEntry_Func6, FSEntry_Func7,
+    FSEntry_Func8, FSEntry_Func9, FSEntry_Func10, FSEntry_Func11,
+    FSEntry_Func12, FSEntry_Func13, FSEntry_Func14, FSEntry_Func15,
+    FSEntry_Func16, FSEntry_Func17, FSEntry_Func18, FSEntry_Func19,
+    FSEntry_Func20, FSEntry_Func21, FSEntry_Func22, FSEntry_Func23,
+    FSEntry_Func24, FSEntry_Func25, FSEntry_Func26, FSEntry_Func27,
+    FSEntry_Func28, FSEntry_Func29, FSEntry_Func30, FSEntry_Func31,
+    FSEntry_Func32, FSEntry_Func33, FSEntry_Func34, FSEntry_Func35,
+    FSEntry_Func36, FSEntry_Func37
+};
+
+static _kernel_oserror *FSEntry_FuncE(_kernel_swi_regs *r, void *pw)
+{
+#ifdef MemCheck_MEMCHECK
+    char *volatile t;
+
+#endif
+    ExceptTry
+    {
+        FsysEnter();
+    }
+    ExceptCatch
+    {
+        return ExceptCaught();
+    }
+#ifdef MemCheck_MEMCHECK
+    MemCheck_RegisterMiscBlock(r, sizeof(*r));
+    switch(r->r[0])
+    {
+        case 14:
+        case 15:
+        case 19:
+        case 35:
+            t = (char *) r->r[1];
+            MemCheck_RegisterMiscBlock_String(t);
+            break;
+        default:
+            t = NULL;
+    }
+#endif
+    ExceptTry
+    {
+#if RECORD_CALLS
+        Printf("Func %d", r->r[0]);
+#endif
+        if(r->r[0] < 38) FSEntry_FuncA[r->r[0]](r, pw, 0);
+    }
+    ExceptCatch
+    {
+#ifdef MemCheck_MEMCHECK
+        if(t) MemCheck_UnRegisterMiscBlock(t);
+        MemCheck_UnRegisterMiscBlock(r);
+#endif
+        FsysLeave();
+        return ExceptCaught();
+    }
+#ifdef MemCheck_MEMCHECK
+    if(t) MemCheck_UnRegisterMiscBlock(t);
+    MemCheck_UnRegisterMiscBlock(r);
+#endif
+    FsysLeave();
+    return 0;
+}
+
+static _kernel_oserror *ImageEntry_FuncE(_kernel_swi_regs *r, void *pw)
+{
+#ifdef MemCheck_MEMCHECK
+    char *volatile t;
+
+#endif
+    ExceptTry
+    {
+        FsysEnter();
+    }
+    ExceptCatch
+    {
+        return ExceptCaught();
+    }
+#ifdef MemCheck_MEMCHECK
+    MemCheck_RegisterMiscBlock(r, sizeof(*r));
+    switch(r->r[0])
+    {
+        case 14:
+        case 15:
+        case 19:
+        case 35:
+            t = (char *) r->r[1];
+            MemCheck_RegisterMiscBlock_String(t);
+            break;
+        default:
+            t = NULL;
+    }
+#endif
+    ExceptTry
+    {
+#if RECORD_CALLS
+        Printf("Func %d", r->r[0]);
+#endif
+        if(r->r[0] < 38) FSEntry_FuncA[r->r[0]](r, pw, 1);
+    }
+    ExceptCatch
+    {
+#ifdef MemCheck_MEMCHECK
+        if(t) MemCheck_UnRegisterMiscBlock(t);
+        MemCheck_UnRegisterMiscBlock(r);
+#endif
+        FsysLeave();
+        return ExceptCaught();
+    }
+#ifdef MemCheck_MEMCHECK
+    if(t) MemCheck_UnRegisterMiscBlock(t);
+    MemCheck_UnRegisterMiscBlock(r);
+#endif
+    FsysLeave();
+    return 0;
+}
+
+static _kernel_oserror *FSEntry_GBPBE(_kernel_swi_regs *r, void *pw)
+{
+    ExceptTry
+    {
+        FsysEnter();
+    }
+    ExceptCatch
+    {
+        return ExceptCaught();
+    }
+    ExceptTry
+    {
+#if RECORD_CALLS
+        Printf("GBPB");
+#endif
+        FSEntry_GBPB(r, pw);
+    }
+    ExceptCatch
+    {
+        FsysLeave();
+        return ExceptCaught();
+    }
+    FsysLeave();
+    return 0;
+}
+
+static int fsib[11], ifsib[9];
+
+static void make_ibs(void)
+{
+    static int done = 0;
+
+    if(done) return;
+    fsib[0] = (int) FsysFSName           - Image__RO_Base;
+    fsib[1] = (int) FsysStartText        - Image__RO_Base;
+    fsib[2] = Veneer(FSEntry_OpenE)      - Image__RO_Base;
+    fsib[3] = Veneer(FSEntry_GetBytesE)  - Image__RO_Base;
+    fsib[4] = Veneer(FSEntry_PutBytesE)  - Image__RO_Base;
+    fsib[5] = Veneer(FSEntry_ArgsE)      - Image__RO_Base;
+    fsib[6] = Veneer(FSEntry_CloseE)     - Image__RO_Base;
+    fsib[7] = Veneer(FSEntry_FileE)      - Image__RO_Base;
+    fsib[8] = FsysFlags | (1 << 20) | (FsysFSNumber & 0xFF);
+    fsib[9] = Veneer(FSEntry_FuncE)      - Image__RO_Base;
+    fsib[10] = Veneer(FSEntry_GBPBE)     - Image__RO_Base;
+
+    ifsib[0] = 0;
+    ifsib[2] = Veneer(ImageEntry_OpenE)      - Image__RO_Base;
+    ifsib[3] = Veneer(ImageEntry_GetBytesE)  - Image__RO_Base;
+    ifsib[4] = Veneer(ImageEntry_PutBytesE)  - Image__RO_Base;
+    ifsib[5] = Veneer(ImageEntry_ArgsE)      - Image__RO_Base;
+    ifsib[6] = Veneer(ImageEntry_CloseE)     - Image__RO_Base;
+    ifsib[7] = Veneer(ImageEntry_FileE)      - Image__RO_Base;
+    ifsib[8] = Veneer(ImageEntry_FuncE)      - Image__RO_Base;
+    done = 1;
+}
+
+void FsPatchAddFS(void *pw)
+{
+    _kernel_swi_regs regs;
+
+    make_ibs();
+    regs.r[0] = 12;
+    regs.r[1] = Image__RO_Base;
+    regs.r[2] = (int) fsib - Image__RO_Base;
+    regs.r[3] = (int) pw;
+    _kernel_swi(OS_FSControl, &regs, &regs);
+}
+
+void FsPatchRemoveFS(void)
+{
+    _kernel_swi_regs regs;
+
+    regs.r[0] = 16;
+    regs.r[1] = (int) FsysFSName;
+    _kernel_swi(OS_FSControl, &regs, &regs);
+}
+
+void FsPatchAddImage(void *pw, int ftype)
+{
+    _kernel_swi_regs regs;
+
+    make_ibs();
+    ifsib[1] = ftype;
+    regs.r[0] = 35;
+    regs.r[1] = Image__RO_Base;
+    regs.r[2] = (int) ifsib - Image__RO_Base;
+    regs.r[3] = (int) pw;
+    _kernel_swi(OS_FSControl, &regs, &regs);
+}
+
+void FsPatchRemoveImage(int ftype)
+{
+    _kernel_swi_regs regs;
+
+    regs.r[0] = 36;
+    regs.r[1] = ftype;
+    _kernel_swi(OS_FSControl, &regs, &regs);
+}
+
+void FsPatchDropCaches(void)
+{
+    FSPCatCacheDrop();
+    FSPDropObjCache();
+}

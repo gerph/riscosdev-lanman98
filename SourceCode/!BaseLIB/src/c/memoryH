@@ -1,0 +1,173 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*
+ *   PHBG 7/10/96: Initial version
+ *   PHBG 9/9/98: Try avoiding OS_Heap
+ */
+
+#include "MemCheck:MemCheck.h"
+#include "kernel.h"
+#include "swis.h"
+#include <stdlib.h>
+#include "error.h"
+#include "heap.h"
+
+#include "memory.h"
+
+extern char *caller(void);
+
+static int dynam, area, size, base;
+
+static void init(void)
+{
+    _kernel_swi_regs r;
+
+    r.r[0] = 0;
+    r.r[1] = -1;
+    r.r[2] = 1024;
+    r.r[3] = -1;
+    r.r[4] = 0x81;
+    r.r[5] = 1024*1024;
+    r.r[6] = 0;
+    r.r[7] = 0;
+    r.r[8] = (int) "LanMan98";
+    dynam = (_kernel_swi(OS_DynamicArea, &r, &r) == NULL);
+    if(!dynam) return;
+    area = r.r[1];
+    r.r[0] = 2;
+    _kernel_swi(OS_DynamicArea, &r, &r);
+    size = r.r[2];
+    base = r.r[3];
+    HeapInit((void *) base, size);
+}
+
+static void *d_malloc(int i)
+{
+    _kernel_swi_regs r;
+    void *res;
+
+    res = HeapMalloc((void *) base, i);
+    if(res == 0)
+    {
+        r.r[0] = area;
+        r.r[1] = i + 1024;
+        _kernel_swi(OS_ChangeDynamicArea, &r, &r);
+        size += r.r[1];
+        HeapChangeSize((void *)base, size);
+        res = HeapMalloc((void *) base, i);
+    }
+    if(((int) res) < base || ((int) res) + i > base + size)
+        MemCheck_Printf("Strange malloc 0x%08x\n", res);
+    MemCheck_RegisterMiscBlock(res, i);
+    return res;
+}
+
+static void d_free(void *mem)
+{
+    MemCheck_UnRegisterMiscBlock(mem);
+    HeapFree((void *) base, mem);
+}
+
+
+void *Malloc(int i)
+{
+    void *res;
+
+    res = Malloc0(i);
+    if(i != 0 && res == NULL)
+        ErrorFatal("Insufficient memory: %s", caller());
+    return res;
+}
+
+void *Malloc0(int i)
+{
+    static int uninit = 1;
+    void *res;
+
+    if(uninit)
+    {
+        init();
+        uninit = 0;
+        Free(Malloc(512*1024));
+    }
+    res = dynam ? d_malloc(i) : malloc(i);
+    return res;
+}
+
+void Free(void *d)
+{
+    if(dynam)
+        d_free(d);
+    else
+        free(d);
+}
+
+void MemMinimalise(void)
+{
+    static struct {char tag[4]; int f, g;} crud = {"goz", 0, 0};
+    _kernel_swi_regs r;
+
+    return;
+    if(dynam)
+    {
+        r.r[0] = 5;
+        r.r[1] = base;
+        r.r[3] = -size;
+        _kernel_swi(OS_Heap, &r, &r);
+        /* Remove 4 lines to make DA shrink */
+        r.r[0] = 5;
+        r.r[1] = base;
+        _kernel_swi(OS_Heap, &r, &r);
+        return;
+        /* */
+        r.r[0] = area;
+        r.r[1] = -r.r[3];
+        _kernel_swi(OS_ChangeDynamicArea, &r, &r);
+        size -= r.r[1];
+        r.r[3] -= r.r[1];
+        r.r[0] = 5;
+        r.r[1] = base;
+        _kernel_swi(OS_Heap, &r, &r);
+        r.r[0] = 1;
+        r.r[1] = base;
+        _kernel_swi(OS_Heap, &r, &r);
+        crud.f = size - r.r[3];
+        crud.g = size;
+    }
+}
+
+void MemKill(void)
+{
+    _kernel_swi_regs r;
+
+    if(dynam)
+    {
+        r.r[0] = 1;
+        r.r[1] = area;
+        _kernel_swi(OS_DynamicArea, &r, &r);
+    }
+}

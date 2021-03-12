@@ -1,0 +1,53 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Portions Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+#define SMBmkdir	  (0x00)
+#define SMBrmdir	  (0x01)
+#define SMBopen		  (0x02)
+#define SMBcreate	  (0x03)
+#define SMBclose	  (0x04)
+#define SMBunlink	  (0x06)
+#define SMBmv		  (0x07)
+#define SMBgetatr	  (0x08)
+#define SMBsetatr	  (0x09)
+#define SMBread		  (0x0A)
+#define SMBwrite	  (0x0B)
+#define SMBreadRaw	  (0x1A)
+#define SMBtransaction	  (0x25)
+#define SMBtransaction_secondary (0x26)
+#define SMBecho		  (0x2B)
+#define SMBopenandx       (0x2D)
+#define SMBtcon           (0x70)
+#define SMBnegprot        (0x72)
+#define SMBtconandx       (0x75)
+#define SMBdskattr	  (0x80)
+#define SMBsearch         (0x81)
+#define SMBtransaction2	  (0x32)
+#define SMBtransaction2secondary (0x33)
+#define SMBfindclose2     (0x34)
+#define SMBsesssetup      (0x73)
+#define SMBntcreate       (0xA2)
+#define SMBopenPrintFile  (0xC0)

@@ -1,0 +1,106 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 28/4/97: Initial version
+ */
+
+#include <string.h>
+#include "strext.h"
+#include "memory.h"
+#include "error.h"
+#include "fsys.h"
+#include "fsys_err.h"
+
+#include "fspsup_b.h"
+
+
+typedef struct open_list_s *open_list_t;
+
+struct open_list_s
+{
+    path_t path;
+    fsys_image_t img;
+    fsys_handle_t h;
+    int update;
+    open_list_t link;
+};
+
+static open_list_t open_list = NULL;
+
+void FSPRecordOpening(path_t path, fsys_image_t img,
+                           fsys_handle_t h, int update)
+{
+    open_list_t l;
+
+    l = Malloc(sizeof(*l));
+    l->path = path;
+    l->img = img;
+    l->h = h;
+    l->update = update;
+    l->link = open_list;
+    open_list = l;
+}
+
+void FSPRecordClosing(fsys_handle_t h)
+{
+    open_list_t *p, t;
+
+    p = &open_list;
+    while(*p)
+    {
+        if((*p)->h == h)
+        {
+            t = *p;
+            *p = t->link;
+            FSPPathDestruct(t->path);
+            Free(t);
+        }
+        else
+        {
+            p = &((*p)->link);
+        }
+    }
+}
+
+void FSPCanIOpen(path_t path, fsys_image_t img, int update)
+{
+    open_list_t l;
+
+    for(l = open_list; l; l = l->link)
+        if(FSPSamePath(path, l->path)
+            && img == l->img
+            && (update || l->update))
+            ErrorNum(ERR_FileOpen);
+}
+
+void FSPCanIDelete(path_t path, fsys_image_t img)
+{
+    open_list_t l;
+
+    for(l = open_list; l; l = l->link)
+        if(FSPSamePath(path, l->path) && img == l->img)
+            ErrorNum(ERR_FileOpen);
+}

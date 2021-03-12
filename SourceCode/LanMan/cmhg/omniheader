@@ -1,0 +1,46 @@
+
+help-string:  LanMan98 2.08 CIFS client.
+
+title-string: LanMan98
+
+initialisation-code: initialise
+
+finalisation-code:     finalise
+
+service-call-handler: service &40 &a0
+
+swi-chunk-base-number: &52680
+
+swi-handler-code: swi_handler
+
+swi-decoding-table: LanMan98,
+                    OmniOp,
+                    Bad1,
+                    Bad2,
+                    Bad3,
+                    LogonOp,
+                    PollWord
+
+
+command-keyword-table: command
+
+    LanMan98(min-args:0, max-args:0,
+        help-text: "LanMan98 selects LanMan98 as the current filing system\rSyntax: *LanMan98\r"),
+
+    Connect98(min-args:3, max-args:5,
+        help-text: "*Connect98 sets up a connection to a file server\rSyntax: *Connect98 <name> <server> <dir-name> [<user-name> <password>]\r"),
+
+    Disconnect98(min-args:1, max-args:1,
+        help-text: "*Disconnect98 disconnects from a file server\rSyntax: *Disconnect98 <name>\r"),
+
+    LMLogon98(min-args:2, max-args:3,
+        help-text: "*LMLogon98 sets default information about the network\rSyntax: *LMLogon98 <workgroup> <username> [<password>]\r"),
+
+    LMLogoff98(min-args:0, max-args:0,
+        help-text: "*LMLogon98 clears the default user settings\rSyntax: *LMLogoff98\r"),
+
+    Free(fs-command:, min-args:0, max-args:1,
+        help-text: "*Free displays the amount of free space on a remote disc\rSyntax: *Free [<discname>]\r"),
+
+    LanMan98Map(min-args:0, max-args:2,
+        help-text: "Syntax: *LanMan98Map [<MSDOS extension> [<RISC OS filetype>]]\r")

@@ -1,0 +1,1578 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 18/11/96: Initial version
+ */
+
+// #include "MemCheck:MemCheck.h"
+#include <ctype.h>
+#include <string.h>
+#include <stdio.h>
+#include "nodebug.h"
+#include "strext.h"
+#include "date.h"
+#include "word.h"
+#include "data.h"
+#include "error.h"
+#include "memory.h"
+#include "tcp.h"
+#include "smbcmd.h"
+#include "smberr.h"
+#include "vc.h"
+#include "mb.h"
+#include "lm2.h"
+#include "des.h"
+#include "md4.h"
+
+// #include "diag.h"
+
+#include "smb.h"
+
+// #define PRINT_UID
+// #define DODIFF
+
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+
+typedef char search_status_t[21];
+
+typedef struct
+{
+    word16_t dialect;
+    char security_mode;
+    word16_t max_mpx_count;
+    word16_t max_number_vcs;
+    word32_t max_buffer_size;
+    word32_t max_raw_size;
+    word32_t session_key;
+    word32_t capabilities;
+    word32_t system_time_low;
+    word32_t system_time_high;
+    word16_t server_time_zone;
+    char     encryption_key_length;
+} nt_negprot_response_t;
+
+typedef struct
+{
+    search_status_t find_buf_reserved;
+    char find_buf_attr;
+    word16_t find_buf_time;
+    word16_t find_buf_date;
+    word32_t find_buf_size;
+    char find_buf_pname[13];
+} dir_info_t;
+
+typedef struct
+{
+    int mode;
+    int dialect;
+    int max_raw_read;
+    int session;
+    char encryption_key[8];
+} protocol_info_t;
+
+#include "smbsvr.h"
+
+struct smb_obj_s
+{
+#include "smbobj.h"
+    dir_info_t dir_info;
+};
+
+static char *protocols[] =
+{
+    "PC NETWORK PROGRAM 1.0",
+    "PCLAN1.0",
+    "MICROSOFT NETWORKS 1.03",
+    "MICROSOFT NETWORKS 3.0",
+    "LANMAN1.0",
+    "LM1.2X002",
+    "DOS LM1.2X002",
+    "DOS LANMAN2.1",
+    "LANMAN2.1",
+    "NT LM 0.12",
+    NULL
+};
+
+static void extend_path(smb_obj_t obj)
+{
+    char *p;
+    if(obj->path)
+    {
+        p = Malloc(strlen(obj->path) + strlen(obj->name) + 3);
+        strcpy(p, obj->path);
+        Free(obj->path);
+        obj->path = p;
+        p += strlen(p);
+        strcpy(p, obj->name);
+        p += strlen(p);
+        strcpy(p, "\\");
+    }
+    else
+    {
+        // printf("Doing the root\n");
+        obj->path = strdup("\\");
+    }
+}
+
+static char *disc_device = "A:";
+static char *printer_device = "LPT1:";
+static char *rap_device = "IPC";
+
+static void communicate(smb_server_t svr)
+{
+    svr->send(svr->vc);
+    svr->receive(svr->vc);
+}
+
+static char *xsmb2ro(char *name)
+{
+    char *res;
+
+    res = name = strdup(name);
+    while(*name)
+    {
+        switch(*name)
+        {
+            case '#': *name = '?'; break;
+            case '&': *name = '+'; break;
+            case '@': *name = '='; break;
+            case '%': *name = ';'; break;
+            case '$': *name = '<'; break;
+            case '^': *name = '>'; break;
+            case '.': *name = '/'; break;
+            case '\\': *name = '.'; break;
+            case ' ': *name = 0xA0; break;
+        }
+        name++;
+    }
+    return res;
+}
+
+static char *xro2smb(char *name)
+{
+    char *res;
+
+    res = name = strdup(name);
+    while(*name)
+    {
+        switch(*name)
+        {
+            case '?': *name = '#'; break;
+            case '+': *name = '&'; break;
+            case '=': *name = '@'; break;
+            case ';': *name = '%'; break;
+            case '<': *name = '$'; break;
+            case '>': *name = '^'; break;
+            case '/': *name = '.'; break;
+            case '.': *name = '\\'; break;
+            case 0xA0: *name = ' '; break;
+        }
+        name++;
+    }
+    return res;
+}
+
+static void send(vc_t vc)
+{
+    data_t mb;
+
+    mb = VCBuffer(vc);
+    MBClearError(mb);
+    MBSetFlags(mb, 0, 0);
+    VCSend(vc, MBMessLen(mb));
+}
+
+#if 0
+static void show_error(int *id, char *tag, _kernel_oserror *err)
+{
+    static char buf[32];
+
+    sprintf(buf, "LanMan98$%sError%02d", tag, (*id)++);
+    VarSet(buf, err->errmess);
+}
+#endif
+
+static void receive(vc_t vc)
+{
+    data_t mb;
+    int okay, error, sub_error;
+
+    VCReceive(vc);
+    mb = VCBuffer(vc);
+    MBGetError(mb, &error, &sub_error);
+    okay = error == 0;
+    if(error == 1)
+    {
+        switch(sub_error)
+        {
+            case 18:
+                okay = 1;
+                break;
+        }
+    }
+    if(!okay)
+    {
+        VCFlush(vc);
+        SMBError(error, sub_error);
+    }
+}
+
+static char *name_map(char *name)
+{
+    char *p, *q;
+
+    for(p = name; *p; p++)
+    {
+        switch(*p)
+        {
+            case '[': *p = '-'; break;
+            case ']': *p = '-'; break;
+            case ',': *p = '-'; break;
+            default: *p = toupper(*p); break;
+        }
+    }
+    p = strrchr(name, '/');
+    if(p) *p++ = 0;
+    for(q = strchr(name, '/'); q; q = strchr(name, '/'))
+        *q = '_';
+    if(name[0] == 0 || (p && *p == 0))
+        Error("Name has unmappable form");
+    if(strlen(name) > 8) name[8] = 0;
+    if(p && strlen(p) > 3) p[3] = 0;
+    if(p)
+    {
+        q = name + strlen(name);
+        *q++ = '/';
+        memmove(q, p, strlen(p)+1);
+    }
+    return name;
+}
+
+smb_obj_t construct(smb_server_t svr)
+{
+    smb_obj_t obj;
+
+    obj = Malloc(sizeof(*obj));
+    obj->svr = svr;
+    obj->path = NULL;
+    obj->name = NULL;
+    obj->ro_name = NULL;
+    obj->dirty = 0;
+    return obj;
+}
+
+static smb_obj_t dup(smb_obj_t obj)
+{
+    smb_obj_t nobj;
+
+    nobj = Malloc(sizeof(*nobj));
+    nobj->svr = obj->svr;
+    nobj->path = obj->path ? strdup(obj->path) : NULL;
+    nobj->name = obj->name ? strdup(obj->name) : NULL;
+    nobj->ro_name = NULL;
+    nobj->length = obj->length;
+    nobj->attribute = obj->attribute;
+    nobj->time = obj->time;
+    nobj->dirty = obj->dirty;
+    nobj->dir_info = obj->dir_info;
+    return nobj;
+}
+
+static void destruct(smb_obj_t obj)
+{
+    if(obj->name) Free(obj->name);
+    if(obj->ro_name) Free(obj->ro_name);
+    if(obj->path) Free(obj->path);
+    Free(obj);
+}
+
+static void set_vals(smb_obj_t obj)
+{
+    if(obj->name)
+    {
+        Free(obj->name);
+        obj->name = NULL;
+    }
+    obj->name = strdup(obj->dir_info.find_buf_pname);
+    obj->time = DateDOStoSMB(Word16(obj->dir_info.find_buf_time),
+                             Word16(obj->dir_info.find_buf_date));
+    obj->length = Word32(obj->dir_info.find_buf_size);
+    obj->attribute = obj->dir_info.find_buf_attr;
+}
+
+static int first(smb_obj_t obj, char *name)
+{
+    data_t mb;
+    smb_buf_t smb_buf;
+    ushort vwv[2];
+    int size;
+
+    mb = VCBuffer(obj->svr->vc);
+    MBSetCom(mb, SMBsearch);
+    vwv[0] = 1;
+    vwv[1] = 0x37;
+    MBSetVWV(mb, 2, vwv);
+    MBAddAscii(mb, obj->path);
+    MBContinueAscii(mb, name);
+    MBAddVarBlk(mb, 0, NULL);
+
+    communicate(obj->svr);
+
+    if(MBError(mb))
+        return 0;
+    MBGetVWV(mb, 1, vwv);
+    if(vwv[0] == 0)
+        return 0;
+    if(vwv[0] != 1)
+        Error("Unrequested directory entries returned");
+    MBGetBuf(mb, &smb_buf);
+    if(MBBufType(&smb_buf) != VARBLK)
+        Error("Search didn't return a variable block");
+    size = MBBufSize(&smb_buf);
+    if(size < 0x2B)
+        Error("Var block too small for dir info");
+    memcpy(&obj->dir_info, MBBufData(&smb_buf), 0x2B);
+    set_vals(obj);
+    return 1;
+}
+
+static int next(smb_obj_t obj)
+{
+    data_t mb;
+    smb_buf_t smb_buf;
+    ushort vwv[2];
+    int size;
+
+    mb = VCBuffer(obj->svr->vc);
+    MBSetCom(mb, SMBsearch);
+    vwv[0] = 1;
+    vwv[1] = 0x37;
+    MBSetVWV(mb, 2, vwv);
+    MBAddAscii(mb, "");
+    MBAddVarBlk(mb, sizeof(search_status_t), obj->dir_info.find_buf_reserved);
+
+    communicate(obj->svr);
+
+    if(MBError(mb))
+        return 0;
+    MBGetVWV(mb, 1, vwv);
+    if(vwv[0] == 0)
+        return 0;
+    if(vwv[0] != 1)
+        Error("Unrequested directory entries returned");
+    MBGetBuf(mb, &smb_buf);
+    if(MBBufType(&smb_buf) != VARBLK)
+        Error("Search didn't return a variable block");
+    size = MBBufSize(&smb_buf);
+    if(size < 0x2B)
+        Error("Var block too small for dir info");
+    memcpy(&obj->dir_info, MBBufData(&smb_buf), 0x2B);
+    set_vals(obj);
+    return 1;
+}
+
+static void flush(smb_obj_t obj)
+{
+    data_t mb;
+    ushort vwv[8];
+    int is_dir;
+
+    is_dir = ((obj->attribute & SMB_SUBDIR) != 0);
+    if(obj->dirty)
+    {
+        ExceptTry
+        {
+            mb = VCBuffer(obj->svr->vc);
+            MBSetCom(mb, SMBsetatr);
+            vwv[0] = (obj->attribute & ~SMB_SUBDIR);
+            vwv[1] = obj->time;
+            vwv[2] = (obj->time >> 16);
+            vwv[3] = vwv[4] = vwv[5] = vwv[6] = vwv[7] = 0;
+            MBSetVWV(mb, 8, vwv);
+            MBAddAscii(mb, obj->path);
+            MBContinueAscii(mb, obj->name);
+            MBAddAscii(mb, "");
+            communicate(obj->svr);
+        }
+        ExceptCatch
+        {
+            ExceptTry
+            {
+                mb = VCBuffer(obj->svr->vc);
+                MBSetCom(mb, SMBsetatr);
+                vwv[0] = (obj->attribute & ~SMB_SUBDIR);
+                vwv[1] = vwv[2] = vwv[3] = vwv[4] = vwv[5] = vwv[6] = vwv[7] = 0;
+                MBSetVWV(mb, 8, vwv);
+                MBAddAscii(mb, obj->path);
+                MBContinueAscii(mb, obj->name);
+                MBAddAscii(mb, "");
+                communicate(obj->svr);
+            }
+            ExceptCatch
+            {
+            }
+            if(!is_dir)
+            {
+                MBSetCom(mb, SMBopen);
+                vwv[0] = 0x20;
+                vwv[1] = obj->attribute;
+                MBSetVWV(mb, 2, vwv);
+                MBAddAscii(mb, obj->path);
+                MBContinueAscii(mb, obj->name);
+                communicate(obj->svr);
+                MBGetVWV(mb, 1, vwv);
+
+                MBSetCom(mb, SMBclose);
+                vwv[1] = obj->time;
+                vwv[2] = (obj->time >> 16);
+                MBSetVWV(mb, 3, vwv);
+                MBAddAscii(mb, obj->path);
+                MBContinueAscii(mb, obj->name);
+                communicate(obj->svr);
+            }
+        }
+        obj->dirty = 0;
+    }
+}
+
+
+static void disk_info(smb_server_t svr, smb_disc_info_t *dinfo)
+{
+    data_t mb;
+    ushort vwv[4];
+
+    mb = VCBuffer(svr->vc);
+    MBSetCom(mb, SMBdskattr);
+    MBSetVWV(mb, 5, vwv);
+
+    communicate(svr);
+
+    MBGetVWV(mb, 4, vwv);
+    dinfo->total = vwv[0];
+    dinfo->free = vwv[3];
+    dinfo->units = vwv[1] * vwv[2];
+}
+
+
+static protocol_info_t negotiate(vc_t vc)
+{
+    protocol_info_t prot_info;
+    data_t mb;
+    ushort vwv[17];
+    nt_negprot_response_t *response;
+    int i;
+
+    mb = VCBuffer(vc);
+    MBSetCom(mb, SMBnegprot);
+    MBSetVWV(mb, 0, NULL);
+    for(i = 0; protocols[i]; i++)
+    {
+        MBAddDialect(mb, protocols[i]);
+    }
+
+    send(vc);
+    receive(vc);
+
+    MBGetVWV(mb, 1, vwv);
+    if(vwv[0] < 0 || vwv[0] >= i)
+        Error("Protocol index out of range");
+    prot_info.dialect = vwv[0];
+    prot_info.max_raw_read = 0;
+    prot_info.mode = 0;
+    prot_info.session = 0;
+    memset(prot_info.encryption_key, 0, sizeof(prot_info.encryption_key));
+    if(vwv[0] >= MN103 && vwv[0] <= LM21)
+    {
+        char *data;
+        int size;
+
+        MBGetVWV(mb, 13, vwv);
+        VCResizeBuffer(vc, vwv[2]);
+        prot_info.mode = (vwv[1] & 3);
+        prot_info.session = (vwv[6] | (vwv[7] << 16));
+        if(vwv[5] & 1) prot_info.max_raw_read = 0x10000;
+
+        data  = MBGetRawBuf(mb, &size);
+        if(vwv[11] == 8)
+        {
+            if(size < vwv[11])
+                Error("Encryption key smaller than expected");
+            memcpy(prot_info.encryption_key, data, vwv[11]);
+        }
+        else
+        {
+            prot_info.mode &= ~2;
+        }
+    }
+    if(vwv[0] > LM21)
+    {
+        char *data;
+        int size;
+
+        MBGetVWV(mb, 17, vwv);
+        response = (nt_negprot_response_t *) vwv;
+        VCResizeBuffer(vc, Word32(response->max_buffer_size));
+        prot_info.mode = (response->security_mode & 3);
+        prot_info.session = Word32(response->session_key);
+        if(Word32(response->capabilities) & 1)
+            prot_info.max_raw_read = Word32(response->max_raw_size);
+
+        data  = MBGetRawBuf(mb, &size);
+        if(response->encryption_key_length == 8)
+        {
+            if(size < response->encryption_key_length)
+                Error("Encryption key smaller than expected");
+            memcpy(prot_info.encryption_key, data, response->encryption_key_length);
+        }
+        else
+        {
+            prot_info.mode &= ~2;
+        }
+    }
+    if(vwv[0] == MN103)
+        prot_info.max_raw_read = 0;
+
+    prot_info.max_raw_read = MIN(prot_info.max_raw_read, 0xffff) & ~3;
+
+    // printf("Max raw read size = 0x%04x\n", prot_info.max_raw_read);
+    return prot_info;
+}
+
+static void tree_connect(smb_server_t svr, char *path, char *passwd, char *device)
+{
+    data_t mb;
+    ushort vwv[2];
+
+#ifdef DEBUG
+    printf("Tree connect (passwd = %s)\n", passwd);
+#endif
+    mb = VCBuffer(svr->vc);
+    MBSetCom(mb, SMBtcon);
+    MBSetVWV(mb, 0, NULL);
+    MBAddAscii(mb, path);
+    MBAddAscii(mb, passwd);
+    MBAddAscii(mb, device);
+    communicate(svr);
+    MBGetVWV(mb, 2, vwv);
+    MBSetTid(mb, vwv[1]);
+    if(svr->dialect <= MN103)
+        VCResizeBuffer(svr->vc, vwv[0]);
+}
+
+static int vc_num(void)
+{
+    static int vc = 0;
+
+    if(++vc > 0xFFF) vc = 1;
+    return vc;
+}
+
+
+static char lmhash_magic[8] = {'K', 'G', 'S', '!', '@', '#', '$', '%'};
+
+/* Password null terminated, result is 16 bytes */
+static void lm_hash(char *passwd, char *result)
+{
+    char upper_passwd[14];
+    int i;
+    des_key_t key;
+
+    /* Truncate password to 14 characters, if shorter then pad with zeros */
+    strncpy(upper_passwd, passwd, 14);
+
+    for (i = 0; i < 14; i++)
+        upper_passwd[i] = toupper(upper_passwd[i]);
+
+    key = DesKey(upper_passwd);
+    DesEncrypt(key, lmhash_magic, result);
+    DesKeyDestruct(key);
+    key = DesKey(upper_passwd + 7);
+    DesEncrypt(key, lmhash_magic, result + 8);
+    DesKeyDestruct(key);
+}
+
+/* Password null terminated, result is 16 bytes */
+static void ntlm_hash(char *passwd, char *result)
+{
+    char *unicode_passwd;
+    int i;
+    int len = strlen(passwd);
+
+    unicode_passwd = Malloc(len * 2);
+    memset(unicode_passwd, 0, len * 2);
+
+    /* Simplistically convert from ASCII to UCS-2LE */
+    for (i = 0; i < len; i++)
+        unicode_passwd[2*i] = passwd[i];
+
+    md4_get_digest(unicode_passwd, len * 2, (unsigned char *)result);
+    Free(unicode_passwd);
+}
+
+static void encrypt_password(char *hash, char *challenge, char *response)
+{
+    char P21[21];
+    int i;
+
+    memcpy(P21, hash, 16);
+    memset(P21 + 16, 0, 5);
+
+    for (i = 0; i < 3; i++)
+    {
+        des_key_t key;
+        key = DesKey(P21 + (7 * i));
+        DesEncrypt(key, challenge, response + (8 * i));
+        DesKeyDestruct(key);
+    }
+}
+
+
+static void session_setup(smb_server_t svr, char *user, char *passwd, int session, char *challenge)
+{
+    data_t mb;
+    ushort vwv[13];
+    char response[24];
+    char *data;
+    int size;
+
+#ifdef DEBUG
+    printf("Session setup (user = %s, passwd = %s)\n", user, passwd);
+#endif
+    mb = VCBuffer(svr->vc);
+    MBSetCom(mb, SMBsesssetup);
+    if(svr->dialect < NT)
+    {
+        vwv[0] = 0xFF;
+        vwv[1] = 0;
+        vwv[2] = mb.size;
+        vwv[3] = 2;
+        vwv[4] = 0;
+        vwv[5] = 0;
+        vwv[6] = 0;
+        if (challenge)
+            vwv[7] = sizeof(response);
+        else
+            vwv[7] = strlen(passwd)+1;
+        vwv[8] = 0;
+        vwv[9] = 0;
+        MBSetVWV(mb, 10, vwv);
+        if (challenge)
+        {
+            char lmhash[16];
+
+            lm_hash(passwd, lmhash);
+            encrypt_password(lmhash, challenge, response);
+            MBAddRaw(mb, sizeof(response), response);
+        }
+        else
+        {
+            MBAddRaw(mb, strlen(passwd)+1, passwd);
+        }
+        MBAddRaw(mb, strlen(user)+1, user);
+        MBAddRaw(mb, 1, "");
+        MBAddRaw(mb, strlen("RISC OS")+1, "RISC OS");
+        MBAddRaw(mb, strlen("CIFS")+1, "CIFS");
+    }
+    else
+    {
+        vwv[0] = 0xFF;
+        vwv[1] = 0;
+        vwv[2] = mb.size;
+        vwv[3] = 2;
+        vwv[4] = vc_num();
+        vwv[5] = session;
+        vwv[6] = (session >> 16);
+        if (challenge)
+        {
+            vwv[7] = sizeof(response);
+            vwv[8] = sizeof(response);
+        }
+        else
+        {
+            vwv[7] = strlen(passwd);
+            vwv[8] = 0;
+        }
+        vwv[9] = 0;
+        vwv[10] = 0;
+        vwv[11] = 0;
+        vwv[12] = 0;
+        MBSetVWV(mb, 13, vwv);
+        if (challenge)
+        {
+            char lmhash[16];
+
+            lm_hash(passwd, lmhash);
+            encrypt_password(lmhash, challenge, response);
+            MBAddRaw(mb, sizeof(response), response);
+
+            ntlm_hash(passwd, lmhash);
+            encrypt_password(lmhash, challenge, response);
+            MBAddRaw(mb, sizeof(response), response);
+        }
+        else
+        {
+            MBAddRaw(mb, strlen(passwd), passwd);
+        }
+        MBAddRaw(mb, strlen(user)+1, user);
+        MBAddRaw(mb, 1, "");
+        MBAddRaw(mb, strlen("RISC OS")+1, "RISC OS");
+        MBAddRaw(mb, strlen("CIFS")+1, "CIFS");
+    }
+
+    communicate(svr);
+#ifdef PRINT_UID
+    printf("UID = %d\n", MBGetUid(mb));
+#endif
+    data = MBGetRawBuf(mb, &size);
+
+#define BLACKLIST(x) do { \
+  int len = size; \
+  if (sizeof(x) - 1 < len) \
+      len = sizeof(x) - 1; \
+  if (memcmp(data, x, len) == 0) \
+      svr->max_raw_read = 0; \
+} while (0)
+
+    /* Although Vista claims to support READ_RAW in the capabilities,
+       it does not appear to respond at all to such requests */
+    BLACKLIST("Windows Vista");
+
+    BLACKLIST("Unix\0Samba 3.0.20");
+
+    if (getenv("LanMan98$ReadRaw") == NULL)
+    {
+        svr->max_raw_read = 0;
+    }
+
+    /* This is a heuristic to detect Freecom which appears to be
+       broken in the same way as NAS-BASICxx firmware. */
+    if ((size == 12) && (memcmp(data, "\0R\0\0\0R\0\0\0R\0\0", size) == 0))
+    {
+        svr->nas_basic_firmware = 1;
+    }
+}
+
+
+static void tree_connect_andx(smb_server_t svr, char *path, char *passwd, char *device, char *challenge)
+{
+    data_t mb;
+    ushort vwv[4];
+    char response[24];
+
+#ifdef DEBUG
+    printf("Tree connect andx (passwd = %s)\n", passwd);
+#endif
+    mb = VCBuffer(svr->vc);
+    MBSetCom(mb, SMBtconandx);
+    vwv[0] = 0xff;
+    vwv[1] = 0;
+    vwv[2] = 0;
+    vwv[3] = challenge ? sizeof(response) : strlen(passwd);
+    MBSetVWV(mb, 4, vwv);
+    if (challenge)
+    {
+        char lmhash[16];
+
+        lm_hash(passwd, lmhash);
+        encrypt_password(lmhash, challenge, response);
+        MBAddRaw(mb, sizeof(response), response);
+    }
+    else
+    {
+        MBAddRaw(mb, strlen(passwd), passwd);
+    }
+    MBAddRaw(mb, strlen(path) + 1, path);
+    MBAddRaw(mb, strlen(device) + 1, device);
+    communicate(svr);
+}
+
+static void smb_connect1(smb_server_t svr, char *addr, tcp_port_t port, char *netbios_name, char *share, char *user, char *passwd, char *device)
+{
+    protocol_info_t prot_info;
+
+    svr->vc = VC(addr, port, netbios_name);
+    svr->dialect = 0;
+    svr->max_raw_read = 0;
+    svr->ro2smb = xro2smb;
+    svr->smb2ro = xsmb2ro;
+    svr->send = send;
+    svr->receive = receive;
+    svr->name_map = name_map;
+    svr->construct = construct;
+    svr->dup = dup;
+    svr->destruct = destruct;
+    svr->form = first;
+    svr->first = first;
+    svr->next = next;
+    svr->flush = flush;
+    svr->disk_info = disk_info;
+    svr->nas_basic_firmware = 0;
+    MBInit(VCBuffer(svr->vc));
+    prot_info = negotiate(svr->vc);
+    svr->dialect = prot_info.dialect;
+    svr->max_raw_read = prot_info.max_raw_read;
+    if(svr->dialect >= LM2)
+        svr = LM2Upgrade(svr, (prot_info.mode & 1));
+    if(svr->dialect >= LM1)
+    {
+        session_setup(svr, user, passwd, prot_info.session, (prot_info.mode & 2) ? prot_info.encryption_key : NULL);
+        tree_connect_andx(svr, share, ((prot_info.mode & 1) ? "" : passwd), device, ((prot_info.mode & 3) == 2) ? prot_info.encryption_key : NULL);
+    }
+    else
+    {
+        tree_connect(svr, share, ((prot_info.mode & 1) ? "" : passwd), device);
+    }
+
+    /* This is a heuristic to detect Landisk NAS-BASICxx firmware which is
+       rather broken in several respects. */
+    if ((svr->dialect == NT) &&
+        (prot_info.mode == 2) &&
+        (memcmp(prot_info.encryption_key, "\0\0\0\0\0\0\0\0", 8) == 0))
+    {
+        svr->nas_basic_firmware = 1;
+    }
+}
+
+static smb_server_t smb_connect(char *addr, tcp_port_t port, char *netbios_name, char *share, char *user, char *passwd, char *device)
+{
+    smb_server_t svr;
+
+    // DiagInit();
+    svr = Malloc(sizeof(*svr));
+    svr->vc = NULL;
+    ExceptTry
+    {
+        smb_connect1(svr, addr, port, netbios_name, share, user, passwd, device);
+    }
+    ExceptCatch
+    {
+        SMBDropServer(svr);
+        ExceptRethrow();
+    }
+    return svr;
+}
+
+void SMBReconnect(smb_server_t svr, char *addr, tcp_port_t port, char *netbios_name, char *share, char *user, char *passwd)
+{
+    if(svr->vc)
+    {
+        VCDestruct(svr->vc);
+        svr->vc = NULL;
+    }
+    smb_connect1(svr, addr, port, netbios_name, share, user, passwd, disc_device);
+}
+
+smb_server_t SMBConnect(char *addr, tcp_port_t port, char *netbios_name, char *share, char *user, char *passwd)
+{
+    return smb_connect(addr, port, netbios_name, share, user, passwd, disc_device);
+}
+
+smb_server_t SMBConnectPrinter(char *addr, tcp_port_t port, char *netbios_name, char *share, char *user, char *passwd)
+{
+    return smb_connect(addr, port, netbios_name, share, user, passwd, printer_device);
+}
+
+smb_server_t SMBConnectRAP(char *addr, tcp_port_t port, char *netbios_name, char *user, char *passwd)
+{
+    static char share[64];
+
+    sprintf(share, "\\\\%s\\%s", netbios_name, "IPC$");
+    return smb_connect(addr, port, netbios_name, share, user, passwd, rap_device);
+}
+
+void SMBDiskInfo(smb_server_t svr, smb_disc_info_t *dinfo)
+{
+    svr->disk_info(svr, dinfo);
+}
+
+
+void SMBDropServer(smb_server_t svr)
+{
+    if(svr)
+    {
+        if(svr->vc) VCDestruct(svr->vc);
+        Free(svr);
+    }
+}
+
+
+char *SMBNameMap(char *name, smb_server_t svr)
+{
+    return svr->name_map(name);
+}
+
+void SMBKeepAlive(smb_server_t svr)
+{
+    smb_obj_t obj;
+
+    obj = svr->construct(svr);
+    obj->path = strdup("\\");
+    ExceptTry
+    {
+        svr->first(obj, "Dummy");
+    }
+    ExceptCatch
+    {
+        SMBObjDestruct(obj);
+        ExceptRethrow();
+    }
+    SMBObjDestruct(obj);
+}
+
+void SMBFlushLine(smb_server_t svr)
+{
+    VCFlush(svr->vc);
+}
+
+smb_obj_t SMBCreateFile(smb_obj_t obj, char *name)
+{
+    data_t mb;
+    ushort vwv[3];
+
+    obj = SMBObjDup(obj);
+    ExceptTry
+    {
+        extend_path(obj);
+        if(obj->name) Free(obj->name);
+        obj->name = NULL;
+        obj->name = obj->svr->ro2smb(name);
+        mb = VCBuffer(obj->svr->vc);
+        MBSetCom(mb, SMBcreate);
+        vwv[0] = 0;
+        vwv[1] = 0;
+        vwv[2] = 0;
+        MBSetVWV(mb, 3, vwv);
+        MBAddAscii(mb, obj->path);
+        MBContinueAscii(mb, obj->name);
+        // DiagPrint("Create file: %s%s\n", obj->path, obj->name);
+
+        communicate(obj->svr);
+
+        MBGetVWV(mb, 1, vwv);
+        MBSetCom(mb, SMBclose);
+        vwv[1] = 0;
+        vwv[2] = 0;
+        MBSetVWV(mb, 3, vwv);
+
+        communicate(obj->svr);
+
+        if(!obj->svr->form(obj, obj->name))
+            Error("File not found");
+        obj->dirty = 0;
+    }
+    ExceptCatch
+    {
+        SMBObjDestruct(obj);
+        ExceptRethrow();
+    }
+    return obj;
+}
+
+
+smb_obj_t SMBCreateDirectory(smb_obj_t obj, char *name)
+{
+    data_t mb;
+
+    obj = SMBObjDup(obj);
+    ExceptTry
+    {
+        extend_path(obj);
+        if(obj->name) Free(obj->name);
+        obj->name = NULL;
+        obj->name = obj->svr->ro2smb(name);
+        mb = VCBuffer(obj->svr->vc);
+        MBSetCom(mb, SMBmkdir);
+        MBSetVWV(mb, 0, NULL);
+        MBAddAscii(mb, obj->path);
+        MBContinueAscii(mb, obj->name);
+
+        communicate(obj->svr);
+
+        if(!obj->svr->form(obj, obj->name))
+            Error("Directory not found");
+        obj->dirty = 0;
+    }
+    ExceptCatch
+    {
+        SMBObjDestruct(obj);
+        ExceptRethrow();
+    }
+    return obj;
+}
+
+
+void SMBRename(smb_obj_t obj, char *name)
+{
+    data_t mb;
+    ushort vwv[1];
+
+    name = obj->svr->ro2smb(name);
+    ExceptTry
+    {
+        mb = VCBuffer(obj->svr->vc);
+        MBSetCom(mb, SMBmv);
+        vwv[0] = obj->attribute;
+        MBSetVWV(mb, 1, vwv);
+        MBAddAscii(mb, obj->path);
+        MBContinueAscii(mb, obj->name);
+        MBAddAscii(mb, obj->path);
+        MBContinueAscii(mb, name);
+        // DiagPrint("Rename: %s%s to %s%s\n", obj->path, obj->name, obj->path, name);
+
+        communicate(obj->svr);
+        Free(obj->name);
+        obj->name = name;
+    }
+    ExceptCatch
+    {
+        Free(name);
+        ExceptRethrow();
+    }
+}
+
+
+void SMBMove(smb_obj_t obj1, smb_obj_t obj2)
+{
+    data_t mb;
+    ushort vwv[1];
+
+    SMBDelete(obj2);
+
+    mb = VCBuffer(obj1->svr->vc);
+    MBSetCom(mb, SMBmv);
+    vwv[0] = obj1->attribute;
+    MBSetVWV(mb, 1, vwv);
+    MBAddAscii(mb, obj1->path);
+    MBContinueAscii(mb, obj1->name);
+    MBAddAscii(mb, obj2->path);
+    MBContinueAscii(mb, obj2->name);
+    // DiagPrint("Move: %s%s to %s%s\n", obj1->path, obj1->name, obj2->path, obj2->name);
+
+    communicate(obj1->svr);
+    obj1->dirty = 2; /* Mark as not needing deleting */
+}
+
+
+void SMBDelete(smb_obj_t obj)
+{
+    data_t mb;
+    ushort vwv[1];
+    int is_dir;
+
+    if(obj->dirty == 2)  /* Has been renamed */
+        return;
+    is_dir = (obj->attribute & SMB_SUBDIR);
+    mb = VCBuffer(obj->svr->vc);
+    MBSetCom(mb, is_dir ? SMBrmdir : SMBunlink);
+    vwv[0] = obj->attribute;
+    MBSetVWV(mb, is_dir ? 0 : 1, vwv);
+    MBAddAscii(mb, obj->path);
+    MBContinueAscii(mb, obj->name);
+    // DiagPrint("Delete: %s%s\n", obj->path, obj->name);
+
+    communicate(obj->svr);
+}
+
+
+static char *cat_path(path_t path, smb_server_t svr)
+{
+    int i, len;
+    char *cpath, *p;
+
+    len = 1;
+    for(i = 1; i < path->ntok-1; i++)
+        len += strlen(path->tok[i])+1;
+    p = cpath = Malloc(len+1);
+    *p++ = '.';
+    for(i = 1; i < path->ntok-1; i++)
+    {
+        strcpy(p, path->tok[i]);
+        p += strlen(p);
+        *p++ = '.';
+    }
+    *p++ = 0;
+    ExceptTry
+    {
+        p = svr->ro2smb(cpath);
+        Free(cpath);
+    }
+    ExceptCatch
+    {
+        Free(cpath);
+        ExceptRethrow();
+    }
+    return p;
+}
+
+static char *leaf_of_path(path_t path, smb_server_t svr, char *pattern)
+{
+    char *p, *res;
+
+    p = Malloc(strlen(path->tok[path->ntok-1]) + strlen(pattern) + 1);
+    strcpy(p, path->tok[path->ntok-1]);
+    strcat(p, pattern);
+    ExceptTry
+    {
+        res = svr->ro2smb(p);
+    }
+    ExceptCatch
+    {
+        Free(p);
+        ExceptRethrow();
+    }
+    Free(p);
+    return res;
+}
+
+smb_obj_t SMBPath2Obj(path_t path, smb_server_t svr, char *pattern)
+{
+    smb_obj_t obj;
+
+    obj = svr->construct(svr);
+    obj->path = cat_path(path, svr);
+    obj->name = leaf_of_path(path, svr, pattern);
+    ExceptTry
+    {
+        if(!(*pattern ? svr->first(obj, obj->name) : svr->form(obj, obj->name)))
+        {
+            SMBObjDestruct(obj);
+            obj = NULL;
+        }
+    }
+    ExceptCatch
+    {
+        SMBObjDestruct(obj);
+        ExceptRethrow();
+    }
+    return obj;
+}
+
+smb_obj_t SMBRoot(smb_server_t svr)
+{
+    smb_obj_t obj;
+
+    obj = svr->construct(svr);
+    obj->length = 0;
+    obj->attribute = SMB_ROOT_ATTRS;
+    obj->time = 0;
+    return obj;
+}
+
+smb_obj_t SMBIn(smb_obj_t obj)
+{
+    // printf("In\n");
+    extend_path(obj);
+    if(!obj->svr->first(obj, obj->svr->dialect < NT ? "*.*" : "*"))
+    {
+        SMBObjDestruct(obj);
+        return NULL;
+    }
+    obj->dirty = 0;
+    return obj;
+}
+
+
+smb_obj_t SMBNext(smb_obj_t obj)
+{
+    // printf("Next\n");
+    if(!obj->svr->next(obj))
+    {
+        SMBObjDestruct(obj);
+        return NULL;
+    }
+    obj->dirty = 0;
+    return obj;
+}
+
+
+smb_obj_t SMBObjDup(smb_obj_t obj)
+{
+    // printf("Dup\n");
+    return obj->svr->dup(obj);
+}
+
+
+void SMBObjDestruct(smb_obj_t obj)
+{
+    obj->svr->destruct(obj);
+}
+
+
+char *SMBGetName(smb_obj_t obj)
+{
+    if(obj->path == NULL) return "ROOT";
+    if(obj->ro_name)
+    {
+        Free(obj->ro_name);
+        obj->ro_name = NULL;
+    }
+    obj->ro_name = obj->svr->smb2ro(obj->name);
+    return obj->ro_name;
+}
+
+
+int SMBGetLength(smb_obj_t obj)
+{
+    return obj->length;
+}
+
+
+void SMBSetLength(smb_obj_t obj, int l)
+{
+    // DiagPrint("Set length: %s%s to %d\n", obj->path, obj->name, l);
+    obj->length = l;
+}
+
+
+int SMBGetAttributes(smb_obj_t obj)
+{
+    return obj->attribute;
+}
+
+
+void SMBSetAttributes(smb_obj_t obj, int attr)
+{
+    // DiagPrint("Set attr: %s%s to 0x%08x\n", obj->path, obj->name, attr);
+    obj->attribute = attr;
+    obj->dirty = 1;
+}
+
+
+int SMBGetTime(smb_obj_t obj)
+{
+    return obj->time;
+}
+
+
+void SMBSetTime(smb_obj_t obj, int t)
+{
+    // DiagPrint("Set time: %s%s to %d\n", obj->path, obj->name, t);
+    obj->time = t;
+    obj->dirty = 1;
+}
+
+void SMBFlush(smb_obj_t obj)
+{
+    // DiagPrint("Flush: %s%s\n", obj->path, obj->name);
+    obj->svr->flush(obj);
+}
+
+#ifdef DODIFF
+static FILE *test_file = NULL;
+static FILE *results = NULL;
+static char *tbuf = NULL;
+static int tbuf_size = 2048;
+
+static void test_init(void)
+{
+    test_file = fopen("<LanMan98$Dir>.TestFile", "r");
+    results = fopen("<LanMan98$Dir>.Results", "w");
+}
+
+static void test_fin(void)
+{
+    if(test_file) fclose(test_file);
+    if(results) fclose(results);
+    test_file = NULL;
+    results = NULL;
+    Free(tbuf);
+    tbuf = NULL;
+}
+
+static void test_compare(char *buf, int pos, int count)
+{
+    if(test_file == NULL || results == NULL)
+        return;
+    if(tbuf == NULL || count > tbuf_size)
+    {
+        Free(tbuf);
+        if(count > tbuf_size)
+            tbuf_size = count;
+        tbuf = Malloc(tbuf_size);
+    }
+    fseek(test_file, pos, SEEK_SET);
+    fread(tbuf, 1, count, test_file);
+    fprintf(results, "Reading 0x%x from 0x%x\n", count, pos);
+    if(memcmp(buf, tbuf, count) != 0)
+    {
+        int i;
+
+        for(i = 0; i < count; i++)
+            if(tbuf[i] != buf[i])
+                fprintf(results, "Error at %04x: %02x -> %02x\n", i, tbuf[i], buf[i]);
+    }
+}
+#endif
+
+smb_handle_t SMBOpen(smb_obj_t obj, int update)
+{
+    smb_handle_t h;
+    data_t mb;
+    ushort vwv[15];
+    int fid;
+
+    #ifdef DODIFF
+    test_init();
+    #endif
+    mb = VCBuffer(obj->svr->vc);
+    // DiagPrint("Open: %s%s for %s\n", obj->path, obj->name, update ? "update" : "read");
+
+    if (obj->svr->dialect >= LM1)
+    {
+        MBSetCom(mb, SMBopenandx);
+        vwv[0] = 0xff;
+        vwv[1] = 0;
+        vwv[2] = 0;
+        vwv[3] = update ? 0x12 : 0x20;
+        vwv[4] = obj->attribute;
+        vwv[5] = 0;
+        vwv[6] = 0;
+        vwv[7] = 0;
+        vwv[8] = 0x01;
+        vwv[9] = 0;
+        vwv[10] = 0;
+        vwv[11] = 0;
+        vwv[12] = 0;
+        vwv[13] = 0;
+        vwv[14] = 0;
+        MBSetVWV(mb, 15, vwv);
+        MBAddRaw(mb, strlen(obj->path), obj->path);
+        MBAddRaw(mb, strlen(obj->name) + 1, obj->name);
+
+        communicate(obj->svr);
+
+        MBGetVWV(mb, 3, vwv);
+        fid = vwv[2];
+    }
+    else
+    {
+        MBSetCom(mb, SMBopen);
+        vwv[0] = update ? 0x12 : 0x20;
+        vwv[1] = obj->attribute;
+        MBSetVWV(mb, 2, vwv);
+        MBAddAscii(mb, obj->path);
+        MBContinueAscii(mb, obj->name);
+
+        communicate(obj->svr);
+
+        MBGetVWV(mb, 1, vwv);
+        fid = vwv[0];
+    }
+
+    h = Malloc(sizeof(*h));
+    h->svr = obj->svr;
+    h->fid = fid;
+    h->max_rw_size = (mb.size - HDRSIZE - 20) & ~3;
+    return h;
+}
+
+smb_handle_t SMBOpenPrinter(smb_server_t svr)
+{
+    smb_handle_t h;
+    data_t mb;
+    ushort vwv[2];
+
+    mb = VCBuffer(svr->vc);
+    MBSetCom(mb, SMBopenPrintFile);
+    vwv[0] = 0;
+    vwv[1] = 1;
+    MBSetVWV(mb, 2, vwv);
+    MBAddAscii(mb, "");
+
+    communicate(svr);
+
+    MBGetVWV(mb, 1, vwv);
+    h = Malloc(sizeof(*h));
+    h->svr = svr;
+    h->fid = vwv[0];
+    h->max_rw_size = (mb.size - HDRSIZE - 20) & ~3;
+    // h->max_rw_size = (mb.size - HDRSIZE - 16) & ~3;
+    // printf("OpenPrintFile\n");
+    return h;
+}
+
+void SMBClose(smb_handle_t h)
+{
+    data_t mb;
+    ushort vwv[3];
+
+    if(h)
+    {
+        mb = VCBuffer(h->svr->vc);
+        MBSetCom(mb, SMBclose);
+        vwv[0] = h->fid;
+        vwv[1] = (ushort) -1;
+        vwv[2] = (ushort) -1;
+        MBSetVWV(mb, 3, vwv);
+        // DiagPrint("Close\n");
+
+        communicate(h->svr);
+
+        Free(h);
+    }
+#ifdef DODIFF
+    test_fin();
+#endif
+    // printf("Close\n");
+}
+
+
+void SMBRead(void *buf, int pos, int count, smb_handle_t h)
+{
+    smb_server_t svr;
+    data_t mb;
+    smb_buf_t smb_buf;
+    ushort vwv[8];
+    char *cbuf;
+    int size, requested_size;
+    int reading_raw;
+
+    svr = h->svr;
+    mb = VCBuffer(svr->vc);
+    cbuf = buf;
+    reading_raw = svr->max_raw_read;
+    while(count && reading_raw)
+    {
+        requested_size = MIN(svr->max_raw_read, count);
+        MBSetCom(mb, SMBreadRaw);
+        vwv[0] = h->fid;
+        vwv[1] = pos;
+        vwv[2] = (pos >> 16);
+        vwv[3] = requested_size;
+        vwv[4] = 0;
+        vwv[5] = 0;
+        vwv[6] = 0;
+        vwv[7] = 0;
+        MBSetVWV(mb, 8, vwv);
+
+        svr->send(svr->vc);
+
+        size = VCReceiveRaw(cbuf, requested_size, svr->vc);
+        reading_raw = (size == requested_size);
+
+        count -= size;
+        pos += size;
+        cbuf += size;
+    }
+    while(count)
+    {
+        size = MIN(h->max_rw_size, count);
+        MBSetCom(mb, SMBread);
+        vwv[0] = h->fid;
+        vwv[1] = size;
+        vwv[2] = pos;
+        vwv[3] = (pos >> 16);
+        vwv[4] = count;
+        MBSetVWV(mb, 5, vwv);
+
+        communicate(svr);
+
+        MBGetBuf(mb, &smb_buf);
+        if(MBBufType(&smb_buf) != DATA)
+            Error("Read didn't return data");
+        memcpy(cbuf, MBBufData(&smb_buf), size); /* Check size ??? */
+#ifdef DODIFF
+        test_compare(cbuf, pos, size);
+        fprintf(results, "Requested 0x%x, received 0x%x\n", size, MBBufSize(&smb_buf));
+#endif
+
+        count -= size;
+        pos += size;
+        cbuf += size;
+    }
+}
+
+
+void SMBWrite(void *buf, int pos, int count, smb_handle_t h)
+{
+    data_t mb;
+    ushort vwv[5];
+    char *cbuf;
+    int size;
+
+    mb = VCBuffer(h->svr->vc);
+    cbuf = buf;
+    while(count)
+    {
+        // size = MIN(MIN(h->max_rw_size, count), 4*1024);
+        size = MIN(h->max_rw_size, count);
+        MBSetCom(mb, SMBwrite);
+        vwv[0] = h->fid;
+        vwv[1] = size;
+        vwv[2] = pos;
+        vwv[3] = (pos >> 16);
+        vwv[4] = count;
+        MBSetVWV(mb, 5, vwv);
+        MBAddData(mb, size, cbuf);
+
+        communicate(h->svr);
+
+        count -= size;
+        pos += size;
+        cbuf += size;
+    }
+}
+
+void SMBSetExtent(smb_handle_t h, int length)
+{
+    data_t mb;
+    ushort vwv[5];
+
+    ExceptTry
+    {
+        mb = VCBuffer(h->svr->vc);
+        MBSetCom(mb, SMBwrite);
+        vwv[0] = h->fid;
+        vwv[1] = 0;
+        vwv[2] = length;
+        vwv[3] = (length >> 16);
+        vwv[4] = 0;
+        MBSetVWV(mb, 5, vwv);
+        MBAddData(mb, 0, NULL);
+
+        communicate(h->svr);
+    }
+    ExceptCatch
+    {
+        // Some NASes don't support a write of zero length, so write one byte
+        // beyond the end of the file. The size will be set back to the length
+        // when the file is closed.
+        char data = 0;
+
+        mb = VCBuffer(h->svr->vc);
+        MBSetCom(mb, SMBwrite);
+        vwv[0] = h->fid;
+        vwv[1] = 1;
+        vwv[2] = length;
+        vwv[3] = (length >> 16);
+        vwv[4] = 0;
+        MBSetVWV(mb, 5, vwv);
+        MBAddData(mb, 1, &data);
+
+        communicate(h->svr);
+    }
+}

@@ -1,0 +1,59 @@
+;
+; CDDL HEADER START
+;
+; The contents of this file are subject to the terms of the
+; Common Development and Distribution License (the "Licence").
+; You may not use this file except in compliance with the Licence.
+;
+; You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+; or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+; See the Licence for the specific language governing permissions
+; and limitations under the Licence.
+;
+; When distributing Covered Code, include this CDDL HEADER in each
+; file and include the Licence file. If applicable, add the
+; following below this CDDL HEADER, with the fields enclosed by
+; brackets "[]" replaced with your own identifying information:
+; Portions Copyright [yyyy] [name of copyright owner]
+; 
+; CDDL HEADER END
+;
+ 
+; Portions Copyright 1996 Warm Silence Software Ltd. 
+
+	GET h.SWINames
+
+        AREA    |C$$code|, CODE, READONLY
+
+        EXPORT  BlockedWait0
+
+	; MUST be called in SVC mode.
+BlockedWait0
+        STMFD   R13!,{R0-R12,R14}
+	MOV	R10,R13,LSR #20
+	MOV	R10,R10,LSL #20
+	LDMIA	R10,{R4,R5}
+	STMFD	R13!,{R4,R5}
+ [ ATPCS32
+	MRS	R0,CPSR		; Change to USR mode
+	BIC	R0,R0,#3
+	MSR	CPSR_c,R0
+ |
+        TEQP    PC,#0
+ ]
+        MOV     R0,#0
+        MOV     R1,#1
+        SWI     XOS_Byte
+        SWI     XOS_EnterOS
+	MOV	R0,R0
+	MOV	R10,R13,LSR #20
+	MOV	R10,R10,LSL #20
+	LDMFD	R13!,{R4,R5}
+	STMIA	R10,{R4,R5}
+ [ ATPCS32
+        MSR     CPSR_f,#0
+        LDMFD   R13!,{R0-R12,PC}
+ |
+        LDMFD   R13!,{R0-R12,PC}^
+ ]
+	END

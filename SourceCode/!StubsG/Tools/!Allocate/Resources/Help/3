@@ -1,0 +1,26 @@
+About Filetypes
+
+Filetypes are allocated to third parties who have developed an application
+which implements its own file format, where users can save the data out in
+this form and double click on the file to run/load the data into the
+application.  Filetypes are usually allocated on a one-per-product basis.  If
+you feel that your application needs more than one filetype (because it can
+save, say, two different internal data formats) then you should look at the
+file format design and try and integrate the two.  You should design your
+file format with headers and objects (see the format of DrawFiles for a good
+example).
+
+If a filetype is required then you will need to enter the name of the
+application that the filetype is for and the desired name for the filetype
+(Maximum of 8 characters).  If your filetype can be double clicked and then
+load/run the application and the data, then you  should turn on the option
+button for 'Double clicking Supported' (it is  worth noting that filetypes
+that do not support Double clicking protocols  are not usually allocated). 
+You will also be required to drag the sprites to represent the file, a
+description of the product and its internal file format before an allocation
+can take place.
+
+To add the allocation to the list you will need to click SELECT on the 'Add' 
+icon.
+
+To abort this operation you should click SELECT on the 'Cancel' icon.

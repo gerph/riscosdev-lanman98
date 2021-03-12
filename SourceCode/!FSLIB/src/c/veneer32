@@ -1,0 +1,81 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 7/10/96: Initial version
+ *
+ *   32 bit version for ARM 6 onwards
+ */
+
+#include <string.h>
+#include "error.h"
+#include "veneer.h"
+
+#define VENEER_SIZE (25)
+
+typedef struct {unsigned int code[VENEER_SIZE];} veneer_t;
+
+static veneer_t veneer[MAXVENEER] =
+{
+    {
+	0xE92D43FF,	// STMFD   R13!,{R0-R9,R14}
+	0xE1A0AA2D,	// MOV     R10,R13,LSR #20
+	0xE1A0AA0A,	// MOV     R10,R10,LSL #20
+	0xE1A0200B,	// MOV     R2,R11
+	0xE1A0000D,	// MOV     R0,R13
+	0xE89A0030,	// LDMIA   R10,{R4,R5}
+	0xE1A0100C,	// MOV     R1,R12
+	0xE59CC000,	// LDR     R12,[R12,#0]
+	0xE99C1800,	// LDMIB   R12,{R11,R12}
+	0xE88A1800,	// STMIA   R10,{R11,R12}
+	0xE28AAF87,	// ADD     R10,R10,#&021C
+	0xE3A0B000,	// MOV     R11,#0
+	0xE1A0E00F,	// MOV     R14,PC
+	0xE59FF024,	// LDR     PC,&00000060
+	0xE24AAF87,	// SUB     R10,R10,#&021C
+	0xE88A0030,	// STMIA   R10,{R4,R5}
+	0xE1B0C000,	// MOVS    R12,R0
+	0xE8BD43FF,	// LDMFD   R13!,{R0-R9,R14}
+	0x1A000001,	// BNE     &00000054
+	0xE328F000,	// MSR     CPSR_f,#0
+	0xE1A0F00E,	// MOV     PC,R14
+	0xE1A0000C,	// MOV     R0,R12		; &00000054
+	0xE328F201,	// MSR     CPSR_f,#&10000000
+	0xE1A0F00E,	// MOV     PC,R14
+	0x00000000	// DCD     &00000000		; &00000060
+    }
+};
+
+static int index = 0;
+
+int Veneer(_kernel_oserror *(*func)(_kernel_swi_regs *, void *))
+{
+    if(index >= MAXVENEER)
+        Error("Too many veneers");
+    if(index > 0)
+        veneer[index] = veneer[0];
+    veneer[index].code[VENEER_SIZE - 1] = (int) func;
+    return (int) (veneer + index++);
+}

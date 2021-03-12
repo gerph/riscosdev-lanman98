@@ -1,0 +1,179 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 20/1/99: Initial version
+ */
+
+#include "kernel.h"
+#include "swis.h"
+#include "date.h"
+
+void DateDOStoARC(int time, int date, int arc[])
+{
+    int ords[7];
+
+
+    arc[0] = arc[1] = 0;
+    ords[0] = 0;
+    ords[1] = (time & 0x1F) * 2;
+    ords[2] = (time >> 5) & 0x3F;
+    ords[3] = (time >> 11);
+    ords[4] = date & 0x1F;
+    ords[5] = (date >> 5) & 0xF;
+    ords[6] = (date >> 9) + 1980;
+    _swix(Territory_ConvertOrdinalsToTime, _IN(0)|_IN(1)|_IN(2), -1, arc, ords);
+}
+
+void DateARCtoDOS(int arc[], int *time, int *date)
+{
+    int ords[9];
+
+    _swix(Territory_ConvertTimeToOrdinals, _IN(0)|_IN(1)|_IN(2), -1, arc, ords);
+    *time = (ords[3] << 11) | (ords[2] << 5) | (ords[1] >> 1);
+    *date = ((ords[6] - 1980) << 9) | (ords[5] << 5) | ords[4];
+}
+
+void DateSMBtoARC(int smb, int arc[])
+{
+    unsigned int smb0, smb1;
+    int time_zone;
+
+    smb0 = smb - 2085978496;
+    smb1 = (smb0 >> 16);
+    smb0 &= 0xFFFF;
+    smb0 *= 100;
+    smb1 *= 100;
+    smb1 += (smb0 >> 16);
+    smb0 &= 0xFFFF;
+    arc[0] = ((smb1 << 16) | smb0);
+    arc[1] = (smb1 >> 16);
+
+    _swix(Territory_ReadCurrentTimeZone, _OUT(1), &time_zone);
+    if(time_zone > 0 && (unsigned int)(arc[0] - time_zone) >
+                                            (unsigned int)arc[0])
+        arc[1]--;
+    else if(time_zone < 0 && (unsigned int)(arc[0] - time_zone) <
+                                            (unsigned int)arc[0])
+        arc[1]++;
+    arc[0] -= time_zone;
+}
+
+int DateARCtoSMB(int arc[])
+{
+    unsigned int smb0, smb1, r;
+    int time_zone;
+
+    _swix(Territory_ReadCurrentTimeZone, _OUT(1), &time_zone);
+    if(time_zone > 0 && (unsigned int)(arc[0] + time_zone) <
+                                             (unsigned int)arc[0])
+        arc[1]++;
+    else if(time_zone < 0 && (unsigned int)(arc[0] + time_zone) >
+                                             (unsigned int)arc[0])
+        arc[1]--;
+    arc[0] += time_zone;
+    
+    smb0 = arc[0];
+    smb1 = ((arc[1] << 16) | (smb0 >> 16));
+    smb0 &= 0xFFFF;
+    r = smb1 / 100;
+    smb1 -= r * 100;
+    smb0 |= (smb1 << 16);
+    smb0 /= 100;
+    return smb0 + (r << 16) + 2085978496;
+}
+
+void DateSMBtoDOS(int smb, int *time, int *date)
+{
+    int arc[2];
+
+    DateSMBtoARC(smb, arc);
+    DateARCtoDOS(arc, time, date);
+}
+
+int  DateDOStoSMB(int time, int date)
+{
+    int arc[2];
+
+    DateDOStoARC(time, date, arc);
+    return DateARCtoSMB(arc);
+}
+
+/**
+ * 64bit divide. d must fit in 16bits.
+ */
+static void div64_16(unsigned *low, int *high, int d)
+{
+    int low1, low2;
+
+    low1 = *high;
+    *high /= d;
+    low1 -= *high * d;
+    /* low1 < d, and hence fits in 16bits */
+    low1 = (low1 << 16) + (*low >> 16);
+
+    low2 = low1;
+    low1 /= d;
+    low2 -= low1 * d;
+    /* low2 < d, and hence fits in 16bits */
+    low2 = (low2 << 16) + (*low & 0xFFFF);
+    low2 /= d;
+
+    *low = (low1 << 16) + low2;
+}
+
+
+int DateTimetoSMB(unsigned lowtime, int hightime)
+{
+    // Convert from the number of tenths of a microsecond since 1601 to the
+    // number of seconds since 1970
+    //
+    // int64_t time = lowtime + ((int64_t)hightime << 32);
+    // return (int)(((time + 5000000) / 10000000) - 11644473600);
+
+    unsigned olowtime;
+
+    /* Do 64bit addition */
+    olowtime = lowtime;
+    lowtime += 5000000;
+    /* There's a carry iff lowtime has decreased */
+    if(lowtime < olowtime)
+        hightime += 1;
+
+    /* Do 64bit division in two parts with each
+     * part using a divisor that fits in 16bits */
+    div64_16(&lowtime, &hightime, 1000);
+    div64_16(&lowtime, &hightime, 10000);
+
+    /* Do 64bit subtraction */
+    hightime -= 0x2;
+    olowtime = lowtime;
+    lowtime -= 0xB6109100;
+    /* There's a carry iff lowtime has increased */
+    if(lowtime > olowtime)
+        hightime -= 1;
+
+    return (int)lowtime;
+}

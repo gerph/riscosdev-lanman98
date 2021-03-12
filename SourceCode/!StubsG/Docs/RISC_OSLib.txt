@@ -1,0 +1,8 @@
+RISC_OSLib
+==========
+
+The use of RISC_OSLib has been deprecated for a number of years. However, in
+order to provide an upgrade path for applications built with this library, a
+'snapshot' of the state of the current version of RISC_OSLib has been
+produced. This version of the library is not supported in any significant
+manner and is provided 'as-is'.

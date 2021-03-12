@@ -1,0 +1,121 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 18/11/96: Initial version
+ */
+
+#ifndef _SMB_
+#define _SMB_
+
+#ifndef NULL
+#define NULL (0)
+#endif
+
+#include "tcp.h"
+#include "path.h"
+#include "smbbase.h"
+
+#define SMB_READONLY	(0x01)
+#define SMB_HIDDEN	(0x02)
+#define SMB_SYSTEM	(0x04)
+#define SMB_VLABEL	(0x08)
+#define SMB_SUBDIR	(0x10)
+#define SMB_ARCHIVE	(0x20)
+#define SMB_RSVD1	(0x40)
+#define SMB_RSVD2	(0x80)
+#define SMB_ROOT_ATTRS  (SMB_SUBDIR)
+
+smb_server_t SMBConnect(char *addr, tcp_port_t port, char *netbios_name, char *share, char *user, char *passwd);
+
+void SMBReconnect(smb_server_t svr, char *addr, tcp_port_t port, char *netbios_name, char *share, char *user, char *passwd);
+
+smb_server_t SMBConnectPrinter(char *addr, tcp_port_t port, char *netbios_name, char *share, char *user, char *passwd);
+
+smb_server_t SMBConnectRAP(char *addr, tcp_port_t port, char *netbios_name, char *user, char *passwd);
+
+void SMBDiskInfo(smb_server_t, smb_disc_info_t *);
+
+void SMBDropServer(smb_server_t);
+
+char *SMBNameMap(char *, smb_server_t);
+
+void SMBKeepAlive(smb_server_t);
+
+void SMBFlushLine(smb_server_t);
+
+smb_obj_t SMBCreateFile(smb_obj_t, char *);
+
+smb_obj_t SMBCreateDirectory(smb_obj_t, char *);
+
+void SMBRename(smb_obj_t, char *);
+
+void SMBMove(smb_obj_t, smb_obj_t);
+
+void SMBDelete(smb_obj_t);
+
+
+smb_obj_t SMBPath2Obj(path_t, smb_server_t, char *);
+
+smb_obj_t SMBRoot(smb_server_t);
+
+smb_obj_t SMBIn(smb_obj_t);
+
+smb_obj_t SMBNext(smb_obj_t);
+
+smb_obj_t SMBObjDup(smb_obj_t);
+
+void SMBObjDestruct(smb_obj_t);
+
+char *SMBGetName(smb_obj_t);
+
+int SMBGetLength(smb_obj_t);
+
+void SMBSetLength(smb_obj_t, int);
+
+int SMBGetAttributes(smb_obj_t);
+
+void SMBSetAttributes(smb_obj_t, int);
+
+int SMBGetTime(smb_obj_t);
+
+void SMBSetTime(smb_obj_t, int);
+
+void SMBFlush(smb_obj_t);
+
+smb_handle_t SMBOpen(smb_obj_t, int update);
+
+smb_handle_t SMBOpenPrinter(smb_server_t);
+
+void SMBClose(smb_handle_t);
+
+void SMBRead(void *buf, int pos, int count, smb_handle_t h);
+
+void SMBWrite(void *buf, int pos, int count, smb_handle_t h);
+
+void SMBSetExtent(smb_handle_t h, int);
+
+#endif
+

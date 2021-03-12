@@ -1,0 +1,9 @@
+| !Boot file for !Allocate
+
+Set Allocate$Dir <Obey$Dir>
+Set Allocate$Path <Allocate$Dir>.
+
+IconSprites <Obey$Dir>.!Sprites
+
+Set file$Type_FB0 Allocate
+Set Alias$@RunType_FB0 Run <Allocate$Dir>.!RunImage %*0

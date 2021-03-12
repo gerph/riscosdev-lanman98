@@ -1,0 +1,57 @@
+;
+; CDDL HEADER START
+;
+; The contents of this file are subject to the terms of the
+; Common Development and Distribution License (the "Licence").
+; You may not use this file except in compliance with the Licence.
+;
+; You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+; or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+; See the Licence for the specific language governing permissions
+; and limitations under the Licence.
+;
+; When distributing Covered Code, include this CDDL HEADER in each
+; file and include the Licence file. If applicable, add the
+; following below this CDDL HEADER, with the fields enclosed by
+; brackets "[]" replaced with your own identifying information:
+; Portions Copyright [yyyy] [name of copyright owner]
+; 
+; CDDL HEADER END
+;
+ 
+;    Copyright 1996 Warm Silence Software Ltd. 
+ 
+;
+;    PHBG  27/5/97: Initial version
+
+
+        AREA    |C$$code|, CODE, READONLY
+|x$codeseg|
+
+        EXPORT CheckReg
+        STMIA R13, {R0,R3}
+        STMIA R13, {R4,R7}
+        % (256*4)
+reg
+        % 4
+CheckReg
+        ADR R2, reg
+        SUB R2, R2, #(256*4)
+        MOV R3, #256
+        MOV R0, #0
+loop
+        LDR R1, [R2], #4
+        ADD R0, R0, R1
+        SUBS R3, R3, #1
+        BNE loop
+        LDR R1, [R2]
+        CMP R1, R0
+        MOVEQ R0, #1
+        MOVNE R0, #0
+ [ ATPCS32
+	MSR CPSR_f, #0
+	MOV PC, R14
+ |
+	MOVS PC, R14
+ ]
+	END

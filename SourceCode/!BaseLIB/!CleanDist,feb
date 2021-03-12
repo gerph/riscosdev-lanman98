@@ -1,0 +1,4 @@
+Set BaseLIB$Path <Obey$Dir>.
+Set Alias$BaseLIBMakeCommand Dir BaseLIB:src|Mamu cleandist
+TaskWindow BaseLIBMakeCommand -name "Clean: BaseLIB" -display -quit
+Unset Alias$BaseLIBMakeCommand

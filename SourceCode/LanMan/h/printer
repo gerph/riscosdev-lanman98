@@ -1,0 +1,59 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG  21/12/98: Initial version
+ */
+
+#ifndef _PRINTER_
+#define _PRINTER_
+
+#include "fsys.h"
+
+void PrinterCloseAll(void);
+
+fsys_image_t PrinterImageFromSpecialField(char *);
+
+int PrinterClaimsImage(fsys_image_t);
+
+void PrinterImageRefuse(fsys_image_t, int);
+
+fsys_object_t PrinterPath2Object(path_t, fsys_image_t);
+
+int PrinterClaimsObject(fsys_object_t);
+
+void PrinterObjectRefuse(fsys_object_t, int);
+
+fsys_handle_t PrinterOpen(fsys_object_t, int update, unsigned int fd);
+
+void PrinterLimitSize(fsys_handle_t, int);
+
+fsys_object_t PrinterHandle2File(fsys_handle_t);
+
+void PrinterClose(fsys_handle_t);
+
+void PrinterWrite(void *buf, int pos, int count, fsys_handle_t h);
+
+#endif

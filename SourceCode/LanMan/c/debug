@@ -1,0 +1,66 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*
+    
+    $Id: debug,v 1.3 2001/11/02 17:26:55 paul Exp $
+    
+    $Log: debug,v $
+    Revision 1.3  2001/11/02 17:26:55  paul
+    Reorder name/name,### search for files that end in ~1 etc, so that I
+    don't lose the file type.  Necessary because Windows allows access
+    to both DOS and full names.
+
+*/
+
+
+#include "kernel.h"
+#include "swis.h"
+#include <stdarg.h>
+#include <stdio.h>
+
+#define DDEUtils_ThrowbackStart (0x42587)
+#define DDEUtils_ThrowbackSend  (0x42588)
+
+void Debug_printf(char *file, int line, char *fmt, ...)
+{
+    static int called = 0;
+    va_list args;
+    char buf[256];
+    
+    if(called == 0)
+    {
+        (void) _swix(DDEUtils_ThrowbackStart, 0);
+        called = 1;
+    }
+    
+    va_start(args, fmt);
+    vsprintf(buf, fmt, args);
+    va_end(args);
+    
+    (void) _swix(DDEUtils_ThrowbackSend, _IN(0)|_IN(2)|_IN(3)|_IN(4)|_IN(5),
+                    2, file, line, 0, buf);
+}

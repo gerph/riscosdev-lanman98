@@ -1,0 +1,12 @@
+| !Run file for !Allocate
+
+RMEnsure UtilityModule 3.10 Error You need RISC OS 3.10 or greater to run Allocate
+
+If "<Wimp$ScrapDir>" = "" then Error The scrap directory cannot be found
+If "<Wimp$Scrap>" = "" then Set Wimp$Scrap <Wimp$ScrapDir>.ScrapFile
+
+Run <Obey$Dir>.!Boot
+
+WimpSlot -min 252k -max 252k
+
+Run <Allocate$Dir>.!RunImage %*0

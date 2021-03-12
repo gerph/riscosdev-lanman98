@@ -1,0 +1,92 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Portions Copyright 1996 Warm Silence Software Ltd.
+ */
+
+/******************************************************/
+/*                                                    */
+/* Name: PGtm.c                                       */
+/* Author: Paul Gardiner.                             */
+/*                                                    */
+/*   Time functions                                   */
+/*                                                    */
+/******************************************************/
+
+#include "kernel.h"
+#include "swis.h"
+#include <string.h>
+#include <stdlib.h>
+#include "PGerr.h"
+#include "PGtm.h"
+
+#define SEARCH_LIMIT (2000)
+#define PATTERN (0xABCABCDD)
+
+static void (**proc)(void) = 0;
+
+static void connect(void)
+{
+    _kernel_swi_regs regs;
+    char *name = "";
+    int *module, i;
+
+    regs.r[0] = 18;
+    regs.r[1] = (int) "AviIrq";
+    _kernel_swi(OS_Module, &regs, &regs);
+    if(regs.r[3])
+        name = (char *) (regs.r[3] + *((int *)(regs.r[3] + 16)));
+    if(strcmp(name, "AviIrq") != 0)
+        ErrorFatal("Module AviIrq not loaded");
+    module = (int *) regs.r[4];
+    for(i = 0; i < SEARCH_LIMIT && module[i] != PATTERN; i++);
+    if(i != SEARCH_LIMIT)
+        proc = (void (**)(void)) &(module[i+1]);
+}
+
+int TmConnect(void)
+{
+    if(proc == NULL)
+        connect();
+    return proc != NULL;
+}
+
+void TmDisconnect(void)
+{
+}
+
+unsigned int TmMonTime(void)
+{
+    _kernel_swi_regs regs;
+
+    _kernel_swi(OS_ReadMonotonicTime, &regs, &regs);
+    return (unsigned int) regs.r[0];
+}
+
+void TmBackGround(tm_action act)
+{
+    if(act != NULL)
+        ErrorDelay(1);
+    *proc = act;
+    if(act == NULL)
+        ErrorDelay(0);
+}

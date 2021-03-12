@@ -1,0 +1,357 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 13/1/99: Initial version
+ */
+
+#include <stdio.h>
+#include <string.h>
+#include "error.h"
+#include "memory.h"
+#include "word.h"
+#include "strext.h"
+#include "var.h"
+#include "trans.h"
+#include "smb.h"
+#include "smbsvr.h"
+#include "netbios.h"
+#include "lm2.h"
+#include "mount.h"
+
+#include "logon.h"
+
+// #define DIAGNOSTICS
+
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+
+typedef struct
+{
+    char *server;
+    char *addr;
+    smb_server_t svr;
+    trans_buf_t parm, data;
+} *info_rec_t;
+
+static void kill_info_rec(info_rec_t rec)
+{
+    if(rec)
+    {
+        Free(rec->server);
+        Free(rec->addr);
+        SMBDropServer(rec->svr);
+        TransFreeBuf(rec->parm);
+        TransFreeBuf(rec->data);
+        Free(rec);
+    }
+}
+
+static char *find_pdc(char *domain)
+{
+    char buf[17], *addr, *name;
+    int len;
+
+    memset(buf, ' ', 16);
+    buf[16] = 0;
+    len = MIN(strlen(domain), 15);
+    memcpy(buf, domain, len);
+    buf[15] = 0x1b;
+
+#ifdef DIAGNOSTICS
+    printf("Tying to find PDC's address\n");
+#endif
+    addr = NetBIOSForceResolve(buf);
+    if(addr == NULL)
+        Error("Couldn't resolve PDC for %s", domain);
+    ExceptTry
+    {
+#ifdef DIAGNOSTICS
+        printf("Tying to find PDCs name\n");
+#endif
+	name = VarRead("LanMan98$PDCName");
+	if(name == NULL)
+            name = NetBIOSName(buf, addr);
+        if(name == NULL)
+            Error("Couldn't find PDC's name");
+    }
+    ExceptCatch
+    {
+        Free(addr);
+        ExceptRethrow();
+    }
+    Free(addr);
+    return name;
+}
+
+static char *get_net_info(char *domain, char *user, char *password)
+{
+    char *p, *res;
+    info_rec_t rec;
+    int nparmout;
+    int len_zWrLh, len_B21BzzzWDDzzDDWWzWzDWb21W, len_user;
+    int err, converter, n, home_ptr;
+
+    rec = Malloc(sizeof(*rec));
+    memset(rec, 0, sizeof(*rec));
+    res = NULL;
+    ExceptTry
+    {
+        rec->server = find_pdc(domain);
+        if(rec->server == NULL)
+            Error("Couldn't find PDC");
+        rec->addr = NetBIOSResolve(rec->server);
+        rec->svr = SMBConnectRAP(rec->addr, 139, rec->server, user, password);
+
+        len_zWrLh = strlen("zWrLh") + 1;
+        len_B21BzzzWDDzzDDWWzWzDWb21W = strlen("B21BzzzWDDzzDDWWzWzDWb21W") + 1;
+        len_user = strlen(user) + 1;
+        nparmout = 2
+                 + len_zWrLh
+             	 + len_B21BzzzWDDzzDDWWzWzDWb21W
+             	 + len_user
+             	 + 2
+             	 + 2;
+
+        rec->parm = TransInitBuf(nparmout, 6);
+        rec->data = TransInitBuf(0, 2048);
+
+        p = rec->parm->buf;
+        SetWord16(p, 56); p += 2;
+        memcpy(p, "zWrLh", len_zWrLh); p += len_zWrLh;
+        memcpy(p, "B21BzzzWDDzzDDWWzWzDWb21W", len_B21BzzzWDDzzDDWWzWzDWb21W); p += len_B21BzzzWDDzzDDWWzWzDWb21W;
+        memcpy(p, user, len_user); p += len_user;
+        SetWord16(p, 11); p += 2;
+        SetWord16(p, 2048);
+
+#ifdef DIAGNOSTICS
+        printf("Performing RAP transaction\n");
+#endif
+        TransRAP(rec->parm, rec->data, rec->svr->vc, rec->svr->send, rec->svr->receive);
+#ifdef DIAGNOSTICS
+        printf("RAP transaction comptlete\n");
+#endif
+
+        p = rec->parm->buf;
+        err = Word16(p); p += 2;
+        converter = Word16(p); p += 2;
+        n = Word16(p);
+
+        switch(err)
+        {
+            case 0: break; // Okay
+            case 5: Error("User has insufficient privilege");
+            case 234: break; // Should catch the problem later
+            case 2123: Error("Buffer too small");
+            case 2221: Error("User unknown");
+            default: Error("Error %d from NetUserGetInfo", err);
+        }
+
+        p = rec->data->buf;
+        if(n < 46) Error("Incomplete response from NetUserGetInfo");
+        home_ptr = Word16(p + 44) - converter;
+        res = strdup(p + home_ptr);
+    }
+    ExceptCatch
+    {
+#ifdef DIAGNOSTICS
+        printf("Failed to obtain user info: %s\n", ExceptCaught()->errmess);
+#endif
+        VarSet("LanMan98$HomedirError", ExceptCaught()->errmess);
+    }
+    kill_info_rec(rec);
+    return res;
+}
+
+
+static char *logged_on_user = NULL;
+static char *logged_on_password = NULL;
+
+void LogOn(char *domain, char *user, char *password)
+{
+    char *home_dir, *server, *share, *smb_path, *ro_path;
+
+    LogOff();
+    if(user == NULL || *user == 0)
+        Error("User name must be specified at logon");
+    logged_on_user = strdup(user);
+    logged_on_password = strdup(password ? password : "");
+    VarSet("LanMan98$Homedir", NULL);
+    VarSet("LanMan98$HomedirError", NULL);
+    home_dir = get_net_info(domain, logged_on_user, logged_on_password);
+    ro_path = NULL;
+    ExceptTry
+    {
+        if(home_dir == NULL)
+            Error("No home dir");
+        if(home_dir[0] != '\\' || home_dir[1] != '\\')
+            Error("Home dir doesn't start with \\\\");
+        server = home_dir + 2;
+        share = strchr(server, '\\');
+        if(share == NULL)
+            Error("No share");
+        *share++ = 0;
+        smb_path = strchr(share, '\\');
+        if(smb_path) *smb_path++ = 0;
+        ro_path = smb_path ? LM2ConvertPath(smb_path) : NULL;
+        FsysMount("Home", server, share, NULL, NULL);
+        if(ro_path)
+        {
+            char *var_buf = Malloc(17 + strlen(ro_path) + 1);
+            sprintf(var_buf, "LanMan98::Home.$.%s", ro_path);
+            VarSet("LanMan98$Homedir", var_buf);
+            Free(var_buf);
+        }
+        else
+        {
+            VarSet("LanMan98$Homedir", "LanMan98::Home.$");
+        }
+    } ExceptCatch {}
+    Free(home_dir);
+    Free(ro_path);
+}
+
+void LogOff(void)
+{
+    if(logged_on_user)
+    {
+        Free(logged_on_user);
+        logged_on_user = NULL;
+        Free(logged_on_password);
+        logged_on_password = NULL;
+    }
+}
+
+typedef struct rec_s *rec_t;
+
+struct rec_s
+{
+    char *server, *user, *password;
+    int n_mounts;
+    rec_t next;
+};
+
+static rec_t first_rec = NULL;
+
+static rec_t make_rec(char *server)
+{
+    rec_t rec;
+
+    rec = Malloc(sizeof(*rec));
+    memset(rec, 0, sizeof(*rec));
+    rec->server = strdup(server);
+    rec->next = first_rec;
+    first_rec = rec;
+    return rec;
+}
+
+static void destroy_rec(rec_t rec)
+{
+    rec_t *rp;
+
+    for(rp = &first_rec; *rp && *rp != rec; rp = &(*rp)->next)
+        ;
+    if(*rp)
+    {
+        *rp = (*rp)->next;
+        Free(rec->server);
+        Free(rec->user);
+        Free(rec->password);
+        Free(rec);
+    }
+}
+
+static void update_rec(rec_t rec, char *user, char *password)
+{
+    if(user && *user)
+    {
+        Free(rec->user);
+        rec->user = NULL;
+        Free(rec->password);
+        rec->password = NULL;
+        rec->user = strdup(user);
+        rec->password = strdup(password ? password : "");
+    }
+}
+
+static rec_t find(char *server)
+{
+    rec_t r;
+
+    for(r = first_rec; r; r = r->next)
+        if(ci_strcmp(r->server, server) == 0)
+            return r;
+    return NULL;
+}
+
+static char *server_user(char *server)
+{
+    rec_t rec;
+
+    rec = find(server);
+    return rec ? rec->user : "";
+}
+
+static char *server_password(char *server)
+{
+    rec_t rec;
+
+    rec = find(server);
+    return rec ? rec->password : "";
+}
+
+void LogMount(char *server, char *user, char *password)
+{
+    rec_t rec;
+
+    rec = find(server);
+    if(rec == NULL)
+        rec = make_rec(server);
+    rec->n_mounts++;
+    update_rec(rec, user, password);
+}
+
+void LogDismount(char *server)
+{
+    rec_t rec;
+
+    rec = find(server);
+    if(rec && --(rec->n_mounts) == 0)
+        destroy_rec(rec);
+}
+
+char *LoggedOnUser(char *server)
+{
+    return logged_on_user ? logged_on_user : server_user(server);
+}
+
+char *LoggedOnPassword(char *server)
+{
+    return logged_on_user ? logged_on_password : server_password(server);
+}
+
+int LoggedOn(void)
+{
+    return logged_on_user != NULL;
+}

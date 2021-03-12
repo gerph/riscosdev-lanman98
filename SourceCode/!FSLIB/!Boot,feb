@@ -1,0 +1,1 @@
+IF "<FSLIB$Path>" = "" Then Set FSLIB$Path <Obey$Dir>.

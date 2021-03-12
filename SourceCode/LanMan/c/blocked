@@ -1,0 +1,148 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 20/1/99: Initial version
+ */
+
+// #include "MemCheck:MemCheck.h"
+#include "swis.h"
+#include "error.h"
+#include "time.h"
+#include "var.h"
+#include "prod.h"
+
+static int ver;
+
+static void free_sys_blk(void *blk)
+{
+    int *cont, *choc;
+    int is_choc;
+
+    cont = ((int *) blk) - 1;
+    choc = *((int **) 0x790);
+
+
+    is_choc = ((ver >= 0xA8)
+                 && (cont >= choc + 3)
+                 && (cont < choc + 3 + ((choc[0]*choc[1])>>2))
+                 && ((cont[0] & 0x80000000) == 0));
+
+    if(is_choc)
+    {
+        _kernel_irqs_off();
+        cont[0] |= 0x80000000;
+        cont[1] = choc[2];
+        choc[2] = (int) cont;
+        _kernel_irqs_on();
+    }
+    else
+    {
+        _swix(OS_Heap, _IN(0)|_IN(1)|_IN(2), 3, 0x1c02000, blk);
+    }
+}
+
+
+typedef struct list_s *list_t;
+
+struct list_s
+{
+    list_t next;
+    int f;
+    int r12;
+};
+
+static int inhibited = 0;
+
+void BlockedWaitCtrl(int inh)
+{
+    inhibited = inh;
+}
+
+void BlockedWait(void)
+{
+    static int uninitialised = 1;
+    static int start, end = 0;
+
+    if(inhibited)
+    {
+        AllowCallBacks();
+        return;
+    }
+
+    if(uninitialised)
+    {
+        char *v;
+
+        v = VarRead("LanMan98$CallBackPatch");
+        if(v)
+        {
+            Free(v);
+            ErrorErr(_swix(OS_Module, _IN(0)|_IN(1)|_OUT(3), 18, "Internet", &start));
+//            MemCheck_SetChecking(0, 0);
+            end = start + ((int *)start)[-1];
+//            MemCheck_SetChecking(1, 1);
+            _swix(OS_Byte, _IN(0)|_IN(1)|_IN(2)|_OUT(1), 129, 0, 0xff, &ver);
+        }
+        uninitialised = 0;
+    }
+
+    if(end == 0)
+    {
+        AllowCallBacks();
+    }
+    else
+    {
+        list_t inet_cbs = NULL;
+        list_t *lp, l;
+
+//        MemCheck_SetChecking(0, 0);
+        _kernel_irqs_off();
+        lp = (list_t *) 3876;
+        while(*lp)
+        {
+            l = *lp;
+            if(l->f >= start && l->f < end)
+            {
+                *lp = l->next;
+                l->next = inet_cbs;
+                inet_cbs = l;
+            }
+            else
+            {
+                lp = &(l->next);
+            }
+        }
+        _kernel_irqs_on();
+        while(inet_cbs)
+        {
+            l = inet_cbs;
+            ProdCallBack(l->f, l->r12);
+            inet_cbs = l->next;
+            free_sys_blk(l);
+        }
+//        MemCheck_SetChecking(1, 1);
+    }
+}

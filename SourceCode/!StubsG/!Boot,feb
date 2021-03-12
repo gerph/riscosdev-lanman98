@@ -1,0 +1,1 @@
+IF "<StubsG$Path>"="" THEN Set StubsG$Path <Obey$Dir>.Libraries.

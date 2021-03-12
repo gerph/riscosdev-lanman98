@@ -1,0 +1,1250 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+ 
+/* PHBG 27/12/97: Initial version
+ */
+
+// #include "MemCheck:MemCheck.h"
+#include <stdio.h>
+#include <string.h>
+#include "error.h"
+#include "memory.h"
+#include "vc.h"
+#include "mb.h"
+#include "smbcmd.h"
+#include "smb.h"
+#include "smberr.h"
+#include "trans.h"
+#include "strext.h"
+#include "date.h"
+
+#include "lm2.h"
+
+// #define WATCH
+
+#define RETRYS (100)
+
+#define USEFORM
+
+#define SMB_INFO_STANDARD (1)
+#define SMB_FIND_FILE_BOTH_DIRECTORY_INFO (0x104)
+
+#define DIRBUFSIZE (2048)
+// #define DIRBUFSIZE (512)
+
+#define MAXENTRIES (2000)
+// #define MAXENTRIES (20)
+
+#include "smbsvr.h"
+
+typedef struct
+{
+    int sid;
+    int refs;
+} *sid_t;
+
+struct smb_obj_s
+{
+#include "smbobj.h"
+    sid_t sid;
+    trans_buf_t dir_buf;
+    int entries;
+    int end_of_search;
+    int dir_index;
+    int resume_key;
+};
+
+typedef struct
+{
+    ushort search_attributes;
+    ushort search_count;
+    ushort flags;
+    ushort information_level;
+    int search_storage_type;
+} first2_req_t;
+
+typedef struct
+{
+    ushort sid;
+    ushort search_count;
+    ushort end_of_search;
+    ushort ea_error_offset;
+    ushort last_name_offset;
+} first2_resp_t;
+
+typedef struct
+{
+    ushort sid;
+    ushort search_count;
+    ushort information_level;
+    ushort resume_key_low;
+    ushort resume_key_high;
+    ushort flags;
+} next2_req_t;
+
+typedef struct
+{
+    ushort search_count;
+    ushort end_of_search;
+    ushort ea_error_offset;
+    ushort last_name_offset;
+} next2_resp_t;
+
+typedef struct
+{
+    int resume_key;
+    ushort creation_date;
+    ushort creation_time;
+    ushort last_access_date;
+    ushort last_access_time;
+    ushort last_write_date;
+    ushort last_write_time;
+    int data_size;
+    int allocation_size;
+    ushort attributes;
+    char file_name_length;
+    char file_name[1];
+} info_standard_t;
+
+typedef struct
+{
+    int next_entry_offset;
+    int resume_key;
+    unsigned creation_lowdate;
+    int creation_hightime;
+    unsigned last_access_lowtime;
+    int last_access_hightime;
+    unsigned last_write_lowtime;
+    int last_write_hightime;
+    unsigned change_lowtime;
+    int change_hightime;
+    int data_size;
+    int data_size_high;
+    int allocation_size;
+    int allocation_size_high;
+    int attributes;
+    int file_name_length;
+    int ea_size;
+    char short_name_length;
+    char reserved;
+    char short_name[2*12];
+    char file_name[1];
+} info_both_t;
+
+typedef struct
+{
+    ushort creation_date;
+    ushort creation_time;
+    ushort last_access_date;
+    ushort last_access_time;
+    ushort last_write_date;
+    ushort last_write_time;
+    int data_size;
+    int allocation_size;
+    ushort attributes;
+} set_path_info_t;
+
+#define FILE_NAME_OFFSET ((int) (((info_standard_t *)0)->file_name))
+#define FILE_NAME_OFFSET2 ((int) (((info_both_t *)0)->file_name))
+
+// static int sids = 0;
+
+sid_t mk_sid(int sid)
+{
+    sid_t res;
+
+    res = Malloc(sizeof(*res));
+    res->sid = sid;
+    res->refs = 1;
+    // printf("Construct sid %d\n", ++sids);
+    return res;
+}
+
+void free_sid(sid_t sid, smb_server_t svr)
+{
+    data_t mb;
+    ushort vwv[1];
+
+    --sid->refs;
+    if(sid->refs == 0)
+    {
+        ExceptTry
+        {
+            mb = VCBuffer(svr->vc);
+            MBSetCom(mb, SMBfindclose2);
+            vwv[0] = sid->sid;
+            MBSetVWV(mb, 1, vwv);
+            svr->send(svr->vc);
+            svr->receive(svr->vc);
+            // printf("Destruct sid %d\n", --sids);
+        } ExceptCatch {}
+        Free(sid);
+    }
+}
+
+sid_t copy_sid(sid_t sid)
+{
+    ++sid->refs;
+    return sid;
+}
+
+#if 0
+static void show_error(int *id, char *tag, _kernel_oserror *err)
+{
+    static char buf[32];
+
+    sprintf(buf, "LanMan98$%sError%02d", tag, (*id)++);
+    VarSet(buf, err->errmess);
+}
+#endif
+
+
+/*
+static char stack[8*1024];
+
+extern char *_get_stack(void);
+extern void _set_stack(char *);
+
+static vc_t saved_vc;
+static _kernel_oserror *saved_err;
+
+static void send0(void)
+{
+    data_t mb;
+
+    ExceptTry
+    {
+        mb = VCBuffer(saved_vc);
+        MBClearError(mb);
+        MBSetFlags(mb, 8, 1);
+        VCSend(saved_vc, MBMessLen(mb));
+        saved_err = NULL;
+    }
+    ExceptCatch
+    {
+        saved_err = ExceptCaught();
+    }
+}
+
+static void send(vc_t vc)
+{
+    char *low, *high;
+
+    saved_vc = vc;
+    MemCheck_SetChecking(0, 0);
+    low = _get_stack();
+    high = ((char *)(((int)low) & ~0xfffff)) + 8*1024 - 64;
+    memcpy(stack, low, high-low);
+    _set_stack(high);
+    send0();
+    _set_stack(low);
+    memcpy(low, stack, high-low);
+    MemCheck_SetChecking(1, 1);
+    if(saved_err) ErrorErr(saved_err);
+}
+
+static void receive0(void)
+{
+    data_t mb;
+    int okay, error, sub_error;
+
+    ExceptTry
+    {
+        VCReceive(saved_vc);
+        mb = VCBuffer(saved_vc);
+        MBGetError(mb, &error, &sub_error);
+        okay = error == 0;
+        if(error == 1)
+        {
+            switch(sub_error)
+            {
+                case 18:
+                    okay = 1;
+                    break;
+            }
+        }
+        if(!okay)
+        {
+            VCFlush(saved_vc);
+            SMBError(error, sub_error);
+        }
+        saved_err = NULL;
+    }
+    ExceptCatch
+    {
+        saved_err = ExceptCaught();
+    }
+}
+
+static void receive(vc_t vc)
+{
+    char *low, *high;
+
+    saved_vc = vc;
+    MemCheck_SetChecking(0, 0);
+    low = _get_stack();
+    high = ((char *)(((int)low) & ~0xfffff)) + 8*1024 - 64;
+    memcpy(stack, low, high-low);
+    _set_stack(high);
+    receive0();
+    _set_stack(low);
+    memcpy(low, stack, high-low);
+    MemCheck_SetChecking(1, 1);
+    if(saved_err) ErrorErr(saved_err);
+}
+*/
+
+#ifdef WATCH
+static char *bad = NULL;
+#endif
+
+static void send(vc_t vc)
+{
+    data_t mb;
+
+    mb = VCBuffer(vc);
+    MBClearError(mb);
+    MBSetFlags(mb, 8, 1);
+#ifdef WATCH
+    {
+        int len;
+
+        if(bad)
+        {
+            memset(bad, 0, 4);
+            Free(bad);
+        }
+        len = MBMessLen(mb);
+        bad = Malloc(len+8);
+        memcpy(bad, "ZWZW", 4);
+        memcpy(bad + 4, &len, 4);
+        memcpy(bad + 8, mb.buf, len);
+    }
+#endif
+    VCSend(vc, MBMessLen(mb));
+}
+
+static void receive(vc_t vc)
+{
+    data_t mb;
+    int flush, okay, error, sub_error;
+
+    VCReceive(vc);
+    mb = VCBuffer(vc);
+    MBGetError(mb, &error, &sub_error);
+    okay = error == 0;
+    flush = !okay;
+    switch(error)
+    {
+        case 1:
+            switch(sub_error)
+            {
+                case 18:
+                    okay = 1;
+                    // Fall through
+                case 2:
+                case 3:
+                    flush = 0;
+                    break;
+#ifdef WATCH
+                case 0x57:
+                    bad = NULL;
+                    break;
+#endif
+            }
+            break;
+        case 2:
+            switch(sub_error)
+            {
+                case 1:
+                    // flush = 0;
+                    break;
+            }
+            break;
+    }
+#ifdef WATCH
+    if(bad)
+    {
+        memset(bad, 0, 4);
+        Free(bad);
+        bad = NULL;
+    }
+#endif
+    if(flush)
+    {
+        VCFlush(vc);
+    }
+    if(!okay)
+        SMBError(error, sub_error);
+}
+
+static char *name_map(char *name)
+{
+    return name;
+}
+
+static int quotable(char c, int last)
+{
+    switch(c)
+    {
+    case '&':
+    case '@':
+        return 1;
+    case '%':
+        return !last;
+    default:
+        return 0;
+    }
+}
+
+static int unquotable(char c, int last)
+{
+    switch(c)
+    {
+    case '+':
+    case '=':
+        return 1;
+    case '~':
+        return !last;
+    default:
+        return 0;
+    }
+}
+
+static char quote(char c, int last)
+{
+    switch(c)
+    {
+    case '&': return '+';
+    case '@': return '=';
+    case '%': return last ? c : '~';
+    default: return c;
+    }
+}
+
+static char unquote(char c, int last)
+{
+    switch(c)
+    {
+    case '+': return '&';
+    case '=': return '@';
+    case '~': return last ? c : '%';
+    default: return c;
+    }
+}
+
+static char map(char c)
+{
+    switch(c)
+    {
+    case '#': return '?';
+    case '?': return '#';
+    case '$': return '<';
+    case '^': return '>';
+    case '.': return '/';
+    case '%': return '/';
+    case '\\': return '.';
+    case ' ': return 0xA0;
+    default: return c;
+    }
+}
+
+static char unmap(char c, int last)
+{
+    switch(c)
+    {
+    case '?': return '#';
+    case '#': return '?';
+    case '<': return '$';
+    case '>': return '^';
+    case '/': return last ? '%' : '.';
+    case '.': return '\\';
+    case 0xA0: return ' ';
+    default: return c;
+    }
+}
+
+static char *smb2ro(char *smb)
+{
+    char *ro, *ro_p;
+    int last;
+
+    ro = Malloc(2*strlen(smb)+1);
+    ro_p = ro;
+    last = 0;
+    while(*smb)
+    {
+        last = *(smb+1) == 0;
+        if(quotable(*smb, last))
+        {
+            *ro_p++ = ';';
+            *ro_p++ = quote(*smb++, last);
+        }
+        else if(*smb == ';')
+        {
+            *ro_p++ = *smb++;
+            while(*smb == '!')
+                *ro_p++ = *smb++;
+            last = *(smb+1) == 0;
+            if(unquotable(*smb, last))
+            {
+                *ro_p++ = '!';
+                *ro_p++ = *smb++;
+            }
+        }
+        else
+        {
+            *ro_p++ = map(*smb++);
+        }
+    }
+    *ro_p = 0;
+    return ro;
+}
+
+static char *ro2smb(char *ro)
+{
+    char *smb, *smb_p;
+    int q, last;
+
+    smb = Malloc(strlen(ro)+1);
+    smb_p = smb;
+    last = 0;
+    while(*ro)
+    {
+        if(*ro == ';')
+        {
+            *smb_p++ = *ro++;
+            q = 0;
+            while(*ro == '!')
+            {
+                *smb_p++ = *ro++;
+                q = 1;
+            }
+            last = *(ro+1) == 0;
+            if(unquotable(*ro, last))
+            {
+                smb_p--;
+                *smb_p++ = q ? *ro++ : unquote(*ro++, last);
+            }
+        }
+        else
+        {
+            last = *(ro+1) == 0;
+            *smb_p++ = unmap(*ro++, last);
+        }
+    }
+    *smb_p = 0;
+    return smb;
+}
+
+static smb_obj_t construct(smb_server_t svr)
+{
+    smb_obj_t obj;
+
+    obj = Malloc(sizeof(*obj));
+    obj->svr = svr;
+    obj->path = NULL;
+    obj->name = NULL;
+    obj->ro_name = NULL;
+    obj->dirty = 0;
+    obj->sid = NULL;
+    obj->dir_buf = NULL;
+    obj->entries = 0;
+    obj->end_of_search = 0;
+    return obj;
+}
+
+static smb_obj_t dup(smb_obj_t obj)
+{
+    smb_obj_t nobj;
+
+    nobj = Malloc(sizeof(*nobj));
+    nobj->svr = obj->svr;
+    nobj->path = obj->path ? strdup(obj->path) : NULL;
+    nobj->name = obj->name ? strdup(obj->name) : NULL;
+    nobj->ro_name = NULL;
+    nobj->length = obj->length;
+    nobj->attribute = obj->attribute;
+    nobj->time = obj->time;
+    nobj->dirty = obj->dirty;
+    nobj->sid = obj->sid ? copy_sid(obj->sid) : NULL;
+    nobj->dir_buf = obj->dir_buf ? TransDupBuf(obj->dir_buf) : NULL;
+    nobj->entries = obj->entries;
+    nobj->end_of_search = obj->end_of_search;
+    nobj->dir_index = obj->dir_index;
+    nobj->resume_key = obj->resume_key;
+    return nobj;
+}
+
+static void destruct(smb_obj_t obj)
+{
+    if(obj->name) Free(obj->name);
+    if(obj->ro_name) Free(obj->ro_name);
+    if(obj->path) Free(obj->path);
+    if(obj->sid) free_sid(obj->sid, obj->svr);
+    if(obj->dir_buf) TransFreeBuf(obj->dir_buf);
+    Free(obj);
+}
+
+static int form(smb_obj_t obj, char *name, int rev)
+{
+    // static int id = 0;
+    trans_buf_t setup, parm;
+    ushort *req;
+    info_standard_t *info;
+    int i;
+    volatile int worked;
+
+    setup = TransInitBuf(2,0);
+    parm = TransInitBuf(6 + strlen(obj->path) + strlen(name) + 1, 2);
+    worked = 0;
+    for(i = 0; i < RETRYS && !worked; i++)
+    {
+        ExceptTry
+        {
+            if(obj->dir_buf)
+            {
+                TransFreeBuf(obj->dir_buf);
+                obj->dir_buf = NULL;
+            }
+            obj->dir_buf = TransInitBuf(0, DIRBUFSIZE);
+
+            ((short *)setup->buf)[0] = TRANS2_QUERY_PATH_INFORMATION;
+
+            req = parm->buf;
+            req[0] = SMB_INFO_STANDARD;
+            req[1] = 0;
+            req[2] = 0;
+            strcpy((char *)(req+3), obj->path);
+            strcat((char *)(req+3), name);
+
+            if(obj->sid)
+            {
+                free_sid(obj->sid, obj->svr);
+                obj->sid = NULL;
+            }
+
+            TransCommunicate(setup, parm, obj->dir_buf, obj->svr->vc, obj->svr->send, obj->svr->receive);
+
+            obj->dir_index = 0;
+            worked = 1;
+        }
+        ExceptCatch
+        {
+            if(ExceptCaught()->errnum != 0x20001)
+            {
+                TransFreeBuf(setup);
+                TransFreeBuf(parm);
+                ExceptRethrow();
+            }
+#if 0
+            else
+            {
+                printf("hiccup in Form 0x%8x\n", ExceptCaught()->errnum);
+            }
+#endif
+        }
+    }
+    TransFreeBuf(setup);
+    TransFreeBuf(parm);
+    if(!worked)
+    {
+        // show_error(&id, "Form", ExceptCaught());
+        ExceptRethrow();
+    }
+#if 0
+    else if(i > 1)
+    {
+        static int id = 0;
+
+        ExceptTry
+        {
+            Error("took %d goes", i);
+        }
+        ExceptCatch
+        {
+            show_error(&id, "Form", ExceptCaught());
+        }
+    }
+#endif
+
+    info = (info_standard_t *)(((char *)obj->dir_buf->buf) - 4); // -4 because no resume key
+    obj->time = DateDOStoSMB(rev ? info->last_write_date : info->last_write_time,
+                             rev ? info->last_write_time : info->last_write_date);
+    // printf("\nCreated 0x%04x%04x\n", info->creation_time, info->creation_date);
+    // printf("\nAccessed 0x%04x%04x\n", info->last_access_time, info->last_access_date);
+    obj->length = info->data_size;
+    obj->attribute = info->attributes;
+    obj->resume_key = 0;
+    obj->entries = 0;
+
+    return 1;
+}
+
+static int first(smb_obj_t obj, char *name)
+{
+    // static int id = 0;
+    trans_buf_t setup, parm;
+    first2_req_t *req;
+    first2_resp_t *resp;
+    int found;
+    int i;
+    volatile int worked;
+
+    // printf("First %s, %s\n", obj->path, name);
+    setup = TransInitBuf(2,0);
+    parm = TransInitBuf(sizeof(first2_req_t) + strlen(obj->path)
+                                             + strlen(name) + 1,
+                       sizeof(first2_resp_t));
+    worked = 0;
+    for(i = 0; i < RETRYS && !worked; i++)
+    {
+        ExceptTry
+        {
+            if(obj->dir_buf)
+            {
+                TransFreeBuf(obj->dir_buf);
+                obj->dir_buf = NULL;
+            }
+            obj->dir_buf = TransInitBuf(0, DIRBUFSIZE);
+
+            ((short *)setup->buf)[0] = TRANS2_FIND_FIRST2;
+
+            req = parm->buf;
+            req->search_attributes = 0x37;
+            req->search_count = MAXENTRIES;
+            req->flags = (1<<2);
+            req->information_level = obj->svr->nas_basic_firmware ? SMB_FIND_FILE_BOTH_DIRECTORY_INFO : SMB_INFO_STANDARD;
+            req->search_storage_type = 0;
+            strcpy((char *)(req+1), obj->path);
+            strcat((char *)(req+1), name);
+
+            if(obj->sid)
+            {
+                free_sid(obj->sid, obj->svr);
+                obj->sid = NULL;
+            }
+
+            TransCommunicate(setup, parm, obj->dir_buf, obj->svr->vc, obj->svr->send, obj->svr->receive);
+
+            resp = parm->buf;
+            obj->sid = mk_sid(resp->sid);
+            obj->entries = resp->search_count;
+            obj->end_of_search = resp->end_of_search;
+            obj->dir_index = 0;
+            worked = 1;
+        }
+        ExceptCatch
+        {
+            if(ExceptCaught()->errnum == 0x10002)
+            {
+                obj->entries = 0;
+                worked = 1;
+            }
+            else if(ExceptCaught()->errnum != 0x20001)
+            {
+                TransFreeBuf(setup);
+                TransFreeBuf(parm);
+                ExceptRethrow();
+            }
+#if 0
+            else
+            {
+                printf("hiccup in First\n");
+            }
+#endif
+        }
+    }
+    TransFreeBuf(setup);
+    TransFreeBuf(parm);
+    if(!worked)
+    {
+        // show_error(&id, "Find", ExceptCaught());
+        ExceptRethrow();
+    }
+#if 0
+    else if(i > 1)
+    {
+        static int id = 0;
+
+        ExceptTry
+        {
+            Error("took %d goes", i);
+        }
+        ExceptCatch
+        {
+            show_error(&id, "Find", ExceptCaught());
+        }
+    }
+#endif
+
+    found = obj->entries > 0;
+    if(found)
+    {
+        if(obj->name)
+        {
+            Free(obj->name);
+            obj->name = NULL;
+        }
+        if (obj->svr->nas_basic_firmware)
+        {
+            // The NAS BASICxx firmware returns garbage for SMB_INFO_STANDARD
+            info_both_t *info;
+            info = obj->dir_buf->buf;
+            obj->name = Malloc(info->file_name_length + 1);
+            memcpy(obj->name, info->file_name, info->file_name_length);
+            obj->name[info->file_name_length] = '\0';
+            obj->time = DateTimetoSMB(info->last_write_lowtime, info->last_write_hightime);
+            obj->length = info->data_size;
+            obj->attribute = info->attributes;
+            obj->resume_key = info->resume_key;
+            obj->dir_index += info->next_entry_offset;
+            obj->entries--;
+        }
+        else
+        {
+            info_standard_t *info;
+            info = obj->dir_buf->buf;
+            obj->name = strdup(info->file_name);
+            obj->time = DateDOStoSMB(info->last_write_time, info->last_write_date);
+            // printf("\nCreated 0x%04x%04x\n", info->creation_time, info->creation_date);
+            // printf("\nAccessed 0x%04x%04x\n", info->last_access_time, info->last_access_date);
+            obj->length = info->data_size;
+            obj->attribute = info->attributes;
+            obj->resume_key = info->resume_key;
+            obj->dir_index += sizeof(info_standard_t) + strlen(obj->name);
+            obj->entries--;
+        }
+    }
+    return found;
+}
+
+static int next(smb_obj_t obj)
+{
+    // static int id = 0;
+    trans_buf_t setup, parm;
+    next2_req_t *req;
+    next2_resp_t *resp;
+    int found, i;
+    volatile int worked;
+
+    if(obj->entries <= 0)
+    {
+        if(obj->end_of_search)
+            return 0;
+
+        // printf("Next %s, %s\n", obj->path, obj->name);
+        setup = TransInitBuf(2,0);
+        parm = TransInitBuf(sizeof(next2_req_t) + strlen(obj->name) + 1,
+        // parm = TransInitBuf(sizeof(next2_req_t) + 1,
+                           sizeof(next2_resp_t));
+        worked = 0;
+        for(i = 0; i < RETRYS && !worked; i++)
+        {
+            ExceptTry
+            {
+                if(obj->dir_buf)
+                {
+                    TransFreeBuf(obj->dir_buf);
+                    obj->dir_buf = NULL;
+                }
+                obj->dir_buf = TransInitBuf(0, DIRBUFSIZE);
+
+                ((short *)setup->buf)[0] = TRANS2_FIND_NEXT2;
+
+                req = parm->buf;
+                req->sid = obj->sid->sid;
+                req->search_count = MAXENTRIES;
+                req->information_level = obj->svr->nas_basic_firmware ? SMB_FIND_FILE_BOTH_DIRECTORY_INFO : SMB_INFO_STANDARD;
+                req->resume_key_low = obj->resume_key;
+                req->resume_key_high = (obj->resume_key >> 16);
+                req->flags = (1<<2);
+                strcpy((char *)(req+1), obj->name);
+                // strcpy((char *)(req+1), "");
+
+                TransCommunicate(setup, parm, obj->dir_buf, obj->svr->vc, obj->svr->send, obj->svr->receive);
+
+                resp = parm->buf;
+                obj->entries = resp->search_count;
+                obj->end_of_search = resp->end_of_search;
+                obj->dir_index = 0;
+                worked = 1;
+            }
+            ExceptCatch
+            {
+                if(ExceptCaught()->errnum != 0x20001)
+                {
+                    TransFreeBuf(setup);
+                    TransFreeBuf(parm);
+                    ExceptRethrow();
+                }
+#if 0
+                else
+                {
+                    printf("hiccup in Next\n");
+                }
+#endif
+            }
+        }
+        TransFreeBuf(setup);
+        TransFreeBuf(parm);
+        if(!worked)
+        {
+            // show_error(&id, "Next", ExceptCaught());
+            ExceptRethrow();
+        }
+#if 0
+    else if(i > 1)
+    {
+        static int id = 0;
+
+        ExceptTry
+        {
+            Error("took %d goes", i);
+        }
+        ExceptCatch
+        {
+            show_error(&id, "Next", ExceptCaught());
+        }
+    }
+#endif
+    }
+    found = obj->entries > 0;
+    if(found)
+    {
+        if(obj->name)
+        {
+            Free(obj->name);
+            obj->name = NULL;
+        }
+
+        if (obj->svr->nas_basic_firmware)
+        {
+            // The NAS BASICxx firmware returns garbage for SMB_INFO_STANDARD
+            info_both_t info;
+            memcpy(&info, ((char *) obj->dir_buf->buf) + obj->dir_index, sizeof(info));
+            obj->name = Malloc(info.file_name_length + 1);
+            memcpy(obj->name, ((char *) obj->dir_buf->buf) + obj->dir_index + FILE_NAME_OFFSET2, info.file_name_length);
+            obj->name[info.file_name_length] = '\0';
+            obj->time = DateTimetoSMB(info.last_write_lowtime, info.last_write_hightime);
+            obj->length = info.data_size;
+            obj->attribute = info.attributes;
+            obj->resume_key = info.resume_key;
+            obj->dir_index += info.next_entry_offset;
+            obj->entries--;
+        }
+        else
+        {
+            info_standard_t info;
+            memcpy(&info, ((char *) obj->dir_buf->buf) + obj->dir_index, sizeof(info));
+            obj->name = strdup(((char *) obj->dir_buf->buf) + obj->dir_index + FILE_NAME_OFFSET);
+            obj->time = DateDOStoSMB(info.last_write_time, info.last_write_date);
+            // printf("\nCreated 0x%04x%04x\n", info.creation_time, info.creation_date);
+            // printf("\nAccessed 0x%04x%04x\n", info.last_access_time, info.last_access_date);
+            obj->length = info.data_size;
+            obj->attribute = info.attributes;
+            obj->resume_key = info.resume_key;
+            obj->dir_index += sizeof(info_standard_t) + strlen(obj->name);
+            obj->entries--;
+        }
+    }
+
+    return found;
+}
+
+static int smart_form(smb_obj_t obj, char *name)
+{
+    char *name2;
+    int res;
+
+    if(obj->svr->date_time_reversed != -1)
+        return form(obj, name, obj->svr->date_time_reversed == 1);
+
+    name2 = strdup(name);
+    ExceptTry
+    {
+        int tnonrev, trev, tfind;
+
+        if(!first(obj, name2)) Error("X");
+        tfind = obj->time;
+        if(!form(obj, name2, 0)) Error("Y");
+        tnonrev = obj->time;
+        if(!form(obj, name2, 1)) Error("Z");
+        trev = obj->time;
+
+        if(trev != tnonrev)
+        {
+            if(trev == tfind)
+            {
+                // printf("Dates reversed\n");
+                obj->svr->date_time_reversed = 1;
+            }
+            if(tnonrev == tfind)
+            {
+                // printf("Dates not reversed\n");
+                obj->svr->date_time_reversed = 0;
+            }
+        }
+    } ExceptCatch {}
+
+    ExceptTry
+    {
+        res = form(obj, name2, obj->svr->date_time_reversed == 1);
+    }
+    ExceptCatch
+    {
+        Free(name2);
+        ExceptRethrow();
+    }
+    Free(name2);
+
+    return res;
+}
+
+static void set_info(smb_obj_t obj, int fid)
+{
+    volatile trans_buf_t setup, parm, data;
+    set_path_info_t *new_info;
+
+    setup = parm = data = NULL;
+    if(obj->dirty)
+    {
+        ExceptTry
+        {
+            int lw_t, lw_d;
+
+            setup = TransInitBuf(2, 0);
+            parm = TransInitBuf(6, 2);
+            data = TransInitBuf(22, 0);
+            ((short *)setup->buf)[0] = TRANS2_SET_FILE_INFORMATION;
+            ((short *)parm->buf)[0] = fid;
+            ((short *)parm->buf)[1] = 0x1;
+            ((short *)parm->buf)[2] = 0;
+            new_info = (set_path_info_t *) data->buf;
+            DateSMBtoDOS(obj->time, &lw_t, &lw_d);
+            new_info->creation_date = (ushort) lw_d;
+            new_info->creation_time = (ushort) lw_t;
+            new_info->last_access_date = (ushort) lw_d;
+            new_info->last_access_time = (ushort) lw_t;
+            new_info->last_write_date = (ushort) lw_d;
+            new_info->last_write_time = (ushort) lw_t;
+            new_info->data_size = obj->length;
+            new_info->allocation_size = 0;
+            new_info->attributes = (ushort) obj->attribute;
+            TransCommunicate(setup, parm, data, obj->svr->vc, obj->svr->send, obj->svr->receive);
+        }
+        ExceptCatch
+        {
+            TransFreeBuf(setup);
+            TransFreeBuf(parm);
+            TransFreeBuf(data);
+            ExceptRethrow();
+        }
+        TransFreeBuf(setup);
+        TransFreeBuf(parm);
+        TransFreeBuf(data);
+        obj->dirty = 0;
+    }
+}
+
+static smb_handle_t NTCreate(smb_obj_t obj)
+{
+    smb_handle_t h;
+    data_t mb;
+    unsigned char vwv[2*24];
+    short len;
+
+    mb = VCBuffer(obj->svr->vc);
+    MBSetCom(mb, SMBntcreate);
+    memset(vwv, 0, 2*24);
+    vwv[0] = 0xff; // ANDX command
+    len = strlen(obj->path) + strlen(obj->name) + 1;
+    vwv[5] = len & 0xff;
+    vwv[6] = (len >> 8) & 0xff;
+    vwv[15] = 0x00; // Access mask
+    vwv[16] = 0x01;
+    vwv[17] = 0x10;
+    vwv[18] = 0x00;
+    vwv[35] = 1; // Create disposition
+    vwv[43] = 2; // Impersonation
+    MBSetVWV(mb, 24, (ushort *)vwv);
+    MBAddRaw(mb, strlen(obj->path), obj->path);
+    MBAddRaw(mb, strlen(obj->name) + 1, obj->name);
+
+    obj->svr->send(obj->svr->vc);
+    obj->svr->receive(obj->svr->vc);
+
+    MBGetVWV(mb, 4, (ushort *)vwv);
+    h = Malloc(sizeof(*h));
+    h->svr = obj->svr;
+    h->fid = vwv[5] | (vwv[6] << 8);
+
+    return h;
+}
+
+static void flush(smb_obj_t obj)
+{
+    volatile trans_buf_t setup, parm, data;
+    set_path_info_t *new_info;
+
+    setup = parm = data = NULL;
+    if(obj->dirty)
+    {
+        ExceptTry
+        {
+            ExceptTry
+            {
+                int lw_t, lw_d;
+
+                setup = TransInitBuf(2, 0);
+                parm = TransInitBuf(6 + strlen(obj->path) + strlen(obj->name) + 1, 2);
+                data = TransInitBuf(22, 0);
+                ((short *)setup->buf)[0] = TRANS2_SET_PATH_INFORMATION;
+                ((short *)parm->buf)[0] = 0x1;
+                ((short *)parm->buf)[1] = 0;
+                ((short *)parm->buf)[2] = 0;
+                strcpy((char *)parm->buf + 6, obj->path);
+                strcat((char *)parm->buf + 6, obj->name);
+                new_info = (set_path_info_t *) data->buf;
+                DateSMBtoDOS(obj->time, &lw_t, &lw_d);
+                new_info->creation_date = (ushort) lw_d;
+                new_info->creation_time = (ushort) lw_t;
+                new_info->last_access_date = (ushort) lw_d;
+                new_info->last_access_time = (ushort) lw_t;
+                new_info->last_write_date = (ushort) lw_d;
+                new_info->last_write_time = (ushort) lw_t;
+                new_info->data_size = obj->length;
+                new_info->allocation_size = 0;
+                new_info->attributes = (ushort) obj->attribute;
+                TransCommunicate(setup, parm, data, obj->svr->vc, obj->svr->send, obj->svr->receive);
+
+            }
+            ExceptCatch
+            {
+               if (obj->svr->dialect >= NT)
+               {
+                    // Some NASes don't support SET_PATH_INFO so try SET_FILE_INFO instead
+                    smb_handle_t h;
+                    h = NTCreate(obj);
+                    ExceptTry
+                    {
+                        set_info(obj, h->fid);
+                    }
+                    ExceptCatch
+                    {
+                        SMBClose(h);
+                        ExceptRethrow();
+                    }
+                    SMBClose(h);
+                }
+                else
+                {
+                    ExceptRethrow();
+                }
+            }
+
+        }
+        ExceptCatch
+        {
+            TransFreeBuf(setup);
+            TransFreeBuf(parm);
+            TransFreeBuf(data);
+            ExceptRethrow();
+        }
+        TransFreeBuf(setup);
+        TransFreeBuf(parm);
+        TransFreeBuf(data);
+        obj->dirty = 0;
+    }
+}
+
+static void disk_info(smb_server_t svr, smb_disc_info_t *dinfo)
+{
+    volatile trans_buf_t setup, parm, data;
+    unsigned int *block;
+
+    setup = parm = data = NULL;
+    ExceptTry
+    {
+        setup = TransInitBuf(2, 0);
+        parm = TransInitBuf(4, 0);
+        data = TransInitBuf(0, 20);
+        ((short *)setup->buf)[0] = TRANS2_QUERY_FS_INFORMATION;
+        ((int *)parm->buf)[0] = 0x1;
+        TransCommunicate(setup, parm, data, svr->vc, svr->send, svr->receive);
+        block = (unsigned int *) data->buf;
+//        MemCheck_Printf("block[0] = 0x%08x\n", block[0]);
+//        MemCheck_Printf("block[1] = 0x%08x\n", block[1]);
+//        MemCheck_Printf("block[2] = 0x%08x\n", block[2]);
+//        MemCheck_Printf("block[3] = 0x%08x\n", block[3]);
+//        MemCheck_Printf("block[4] = 0x%08x\n\n", block[4]);
+        dinfo->total = block[2];
+        dinfo->free = block[3];
+        dinfo->units = block[1] * (block[4] & 0xffff);
+    }
+    ExceptCatch
+    {
+        TransFreeBuf(setup);
+        TransFreeBuf(parm);
+        TransFreeBuf(data);
+        ExceptRethrow();
+    }
+    TransFreeBuf(setup);
+    TransFreeBuf(parm);
+    TransFreeBuf(data);
+}
+
+
+smb_server_t LM2Upgrade(smb_server_t svr, int user_level)
+{
+    svr->send      = send;
+    svr->receive   = receive;
+    svr->name_map  = name_map;
+    svr->smb2ro    = smb2ro;
+    svr->ro2smb	   = ro2smb;
+    svr->construct = construct;
+    svr->dup	   = dup;
+    svr->destruct  = destruct;
+#ifdef USEFORM
+    svr->form	   = smart_form;
+    svr->date_time_reversed = -1;
+#else
+    svr->form      = first;
+#endif
+    svr->first	   = first;
+    svr->next	   = next;
+    svr->disk_info = disk_info;
+    // Some systems using only share level security (e.g. Win98) do not
+    // support the newer set information calls used by flush
+    if (user_level)
+      svr->flush   = flush;
+    return svr;
+}
+
+char *LM2ConvertPath(char *s)
+{
+    return smb2ro(s);
+}

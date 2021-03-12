@@ -1,0 +1,148 @@
+Using !Allocate 1.14 (03 Jun 2003)
+===============
+
+
+Contents
+--------
+
+        1. Introduction
+
+        2. Running !Allocate
+        
+        3. Entering your details
+        
+        4. Requesting items
+        
+        5. Editing items
+        
+        6. Saving a request
+        
+        7. Submitting a request to the allocations service
+        
+
+1. Introduction
+---------------
+
+The !Allocate application is a general purpose application for submitting
+allocation request to the Allocations service.  In the past there have been
+three applications that covered the following :-
+
+        !Request -    filetype request
+        !Reserve -    name reservations
+        !Alloc   -    general allocations (SWI Chunks, Error blocks etc...)
+
+!Allocate combines all the above types of allocations into one application.
+
+An application is used to ensure that all the neccessary information is
+submitted for allocations.
+
+
+2. Running !Allocate
+--------------------
+
+To run !Allocate, double click on the !Allocate application in the directory
+viewer.  It is advisable to install the !Allocate application on your hard
+disc as the application will save your details inside itself (see section 3).
+
+
+3. Entering your details
+------------------------
+
+If details have not been entered before, then when !Allocate is run the
+details entry window will be opened on the screen (the details window can
+also be opened by clicking on 'Set details' from the iconbar menu).  The
+details should be entered in full.
+
+The 'Dev No.' field was historically used for Acorn Registered Developers.
+It is not used at present and may be left blank.
+
+To set the details you will need to click SELECT on the 'Save Details' icon. 
+To abort the operation you should click SELECT on the 'Cancel' icon.  When
+'Save Details' is clicked !Allocate will save the details inside itself, so
+your detail will be set whenever you use the application. 
+
+Previous versions of !Allocate would store user details within the
+application. Where present, the Choices structures will be used by this
+and future versions of the application.
+
+If the details are not entered in full then any request may be rejected.
+
+
+4. Requesting items
+-------------------
+
+To request items you will need to click on the !Allocate icon on the iconbar. 
+This will open the list window, which will contain the list of items that you
+have requested (to start off the word 'none' appears, indicating that nothing
+has been requested).
+
+At the top of the list window there is a button bar that is used to open the
+different item windows.  Clicking on a specific button will open the entry
+window for that particular item.
+
+Each item window has the following icons :-
+
+  Add -         Clicking on the 'add' icon will add the requested item to the
+                list of requested items.  A textual description will appear
+                in the list once 'add' has been clicked on.  You will not be
+                able to add the item if any of the compulsory fields have not
+                been filled in.
+                
+  Cancel -      Clicking on the 'Cancel' icon will abort the individual item
+                request.
+                
+  Help -        Each item has its own online help file, which describes the
+                particular item and how to fill in the fields.  Clicking on
+                the 'help' icon will open the help window for the item.
+                
+                
+5. Editing items
+----------------
+
+Double clicking with SELECT on any item in the list of allocations will allow
+that item to be edited.  Subequent clicking on the 'add' icon will update
+that particular item.
+
+Items can be selected by clicking ADJUST on any item.  The selected items can
+then be deleted by using the Selection menu.
+
+
+6. Saving items
+---------------
+
+Once you have completed your request you will need to save it and send it to
+the allocations service.  You should use the 'Save for email' option to save
+messages suitable for emailing to the service.
+
+
+
+
+7. Submitting a request to the allocations service
+--------------------------------------------------
+
+Once you have completed a request you should send it by email to the
+following address:
+
+        allocate@riscos.com
+
+
+Submissions, need to be clearly labelled, indicating the senders name,
+company name (if relevant) and the contents.
+
+Please note that unlike the some previous allocation applications, you
+should not send the whole application to this address when submitting a
+request but only the request data file.
+
+
+8. Confidentiality
+------------------
+
+The allocations service is run for the benefit of all developers by an
+independent third party. Information submitted will not be distributed to
+other developers and will not be provided on demand to any other parties.
+The service is intended to provide a centralised means of allocating
+resources such that duplicated uses do not occur. Since information about
+components under development may be treated as commercially sensitive, no
+disclosure will be made to any other parties.
+
+

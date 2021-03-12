@@ -1,0 +1,63 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 7/10/96: Initial version
+ */
+
+#ifndef _WORD_
+#define _WORD_
+
+typedef char word16_t[2];
+
+typedef char word16s_t[2];
+
+typedef char word32_t[4];
+
+typedef char word16be_t[2];
+
+typedef char word16sbe_t[2];
+
+typedef char word32be_t[4];
+
+int Word16(word16_t);
+
+void SetWord16(word16_t, int);
+
+int Word16S(word16s_t);
+
+int Word32(word32_t);
+
+void SetWord32(word32_t, int);
+
+int Word16BE(word16be_t);
+
+void SetWord16BE(word16be_t, int);
+
+int Word16SBE(word16sbe_t);
+
+int Word32BE(word32be_t);
+
+#endif /* _WORD_ */

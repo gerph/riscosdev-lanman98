@@ -1,0 +1,4 @@
+Set FSLIB$Path <Obey$Dir>.
+Set Alias$FSLIBMakeCommand Dir FSLIB:src|Mamu clean
+TaskWindow FSLIBMakeCommand -name "Clean: FSLIB" -display -quit
+Unset Alias$FSLIBMakeCommand

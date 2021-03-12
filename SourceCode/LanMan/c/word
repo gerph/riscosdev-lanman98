@@ -1,0 +1,81 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 7/10/96: Initial version
+ */
+
+#include "word.h"
+
+int Word16(word16_t w16)
+{
+    return (w16[1] << 8) | w16[0];
+}
+
+void SetWord16(word16_t w16, int i)
+{
+    w16[0] = i;
+    w16[1] = (i >> 8);
+}
+
+int Word16S(word16s_t w16)
+{
+    return ((int) (w16[1] << 24) | (w16[0] << 16)) >> 16;
+}
+
+int Word32(word32_t w32)
+{
+    return (w32[3] << 24) | (w32[2] << 16) | (w32[1] << 8) | w32[0];
+}
+
+void SetWord32(word32_t w32, int i)
+{
+    w32[0] = i;
+    w32[1] = (i >> 8);
+    w32[2] = (i >> 16);
+    w32[3] = (i >> 24);
+}
+
+int Word16BE(word16be_t w16)
+{
+    return (w16[0] << 8) | w16[1];
+}
+
+void SetWord16BE(word16be_t w16, int i)
+{
+    w16[0] = (i >> 8);
+    w16[1] = i;
+}
+
+int Word16SBE(word16sbe_t w16)
+{
+    return ((int) (w16[0] << 24) | (w16[1] << 16)) >> 16;
+}
+
+int Word32BE(word32be_t w32)
+{
+    return (w32[0] << 24) | (w32[1] << 16) | (w32[2] << 8) | w32[3];
+}
+

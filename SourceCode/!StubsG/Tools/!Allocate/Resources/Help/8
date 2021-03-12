@@ -1,0 +1,13 @@
+About Filing Systems
+
+A Filing System number is allocated to a third party when they wish to
+implement their own RISC OS Filing System.
+
+If a Filing Sytem number is required, then you will need to enter the name of
+the Filing System (e.g. SCSIFS) and the name that is used to select it (e.g.
+SCSI).
+
+To add the allocation to the list you will need to click SELECT on the 'Add' 
+icon.
+
+To abort this operation you should click SELECT on the 'Cancel' icon.

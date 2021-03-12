@@ -1,0 +1,2 @@
+If "<PG$Path>" = "" Then IconSprites <Obey$Dir>.!Sprites
+If "<PG$Path>" = "" Then Set PG$Path <Obey$Dir>.

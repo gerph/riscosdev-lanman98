@@ -1,0 +1,29 @@
+About Reservations
+
+To avoid clashes within the system, RISC OS requires many different names to
+be unique.  The categories for these names are as follows :-
+
+  Application names
+  Module names
+  Names of Sprites that reside in the Wimp Sprite Pool
+  Environment (System) variables
+  Font names
+  Star Commands
+  Scrap directories
+  ResourceFS directory names
+  Transient (utilities) names
+  
+You will need to ensure that all the names that your software uses are
+registered with the allocations service, so that name clashing is not
+incurred.  Names should be registered at the start of product development
+(not at the end!) as a reservation request will be rejected if the name is
+already being used by somebody else.
+
+To reserve a name you will need to enter the text (e.g. '!Allocate' as an
+application name) and the type (e.g. AppName).  The type of name is entered
+by selecting the appropriate one from the Type popup menu.
+
+To add the allocation to the list you will need to click SELECT on the 'Add' 
+icon.
+
+To abort this operation you should click SELECT on the 'Cancel' icon.

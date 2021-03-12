@@ -1,0 +1,13 @@
+About Devices
+
+Device Id's are allocated to third parties who have a device which needs to
+support the Device Claim Protocol (see the Programmers Reference Manual for
+more information).
+
+If a Device Id is required then you will need to enter the name of the device
+and a description of its use.
+
+To add the allocation to the list you will need to click SELECT on the 'Add' 
+icon.
+
+To abort this operation you should click SELECT on the 'Cancel' icon.

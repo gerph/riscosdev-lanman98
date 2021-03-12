@@ -1,0 +1,64 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 28/4/97: Initial version
+ */
+
+#ifndef _FSPSUP_D_
+#define _FSPSUP_D_
+
+
+#include "fsys.h"
+#include "fspsup_e.h"
+
+typedef struct place_s *place_t;
+
+
+void FSPDropObjCache(void);
+
+void FSPDropObjectFromCache(fsys_object_t);
+
+void FSPDropImageFromCache(fsys_image_t);
+
+fsys_object_t FSPPath2Object(path_t, fsys_image_t);
+
+fsys_object_t FSPName2Object(char *, fsys_image_t, int);
+
+place_t FSPPath2Place(path_t, fsys_image_t);
+
+place_t FSPName2Place(char *, fsys_image_t, int);
+
+fsys_object_t FSPPlace2Object(place_t);
+
+fsys_object_t FSPPlace2NewFile(place_t);
+
+fsys_object_t FSPPlace2NewDirectory(place_t);
+
+void FSPRename(fsys_object_t, place_t);
+
+void FSPDestructPlace(place_t);
+
+#endif

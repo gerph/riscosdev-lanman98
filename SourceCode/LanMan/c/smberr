@@ -1,0 +1,132 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 9/8/97: Initial version
+ */
+
+#include <stdio.h>
+#include "error.h"
+
+#include "smberr.h"
+
+
+void SMBError(int err, int suberr)
+{
+    static char buf[256];
+    int num;
+
+    num = ((err << 16) | suberr);
+    // printf("Error 0x%04x\n", num);
+    switch(err)
+    {
+        case 1:
+            switch(suberr)
+            {
+                case 1: ErrorNum(num, "Invalid function");
+                case 2: ErrorNum(num, "File not found");
+                case 3: ErrorNum(num, "Directory invalid");
+                case 4: ErrorNum(num, "Too many open files");
+                case 5: ErrorNum(num, "Access denied");
+                case 6: ErrorNum(num, "Invalid file handle");
+                case 7: ErrorNum(num, "Memory control blocks destroyed");
+                case 8: ErrorNum(num, "Insufficient server memory to perform the requested function");
+                case 9: ErrorNum(num, "Invalid memory block address");
+                case 10: ErrorNum(num, "Invalid environment");
+                case 11: ErrorNum(num, "Invalid format");
+                case 12: ErrorNum(num, "Invalid open mode");
+                case 13: ErrorNum(num, "Invalid data");
+                case 15: ErrorNum(num, "Invalid drive specified");
+                case 16: ErrorNum(num, "Attempt to delete current directory");
+                case 17: ErrorNum(num, "Not same device");
+                case 18: ErrorNum(num, "A File Search command can find no more files");
+                case 32: ErrorNum(num, "Sharing mode conflict");
+                case 33: ErrorNum(num, "Lock conflict");
+                case 67: ErrorNum(num, "Share name does not exist");
+                case 80: ErrorNum(num, "File already exists");
+                case 112: ErrorNum(num, "There is not enough space on the disk");
+            }
+            break;
+        case 2:
+            switch(suberr)
+            {
+                case 1: ErrorNum(num, "Non-specific error");
+                case 2: ErrorNum(num, "Bad password");
+                case 4: ErrorNum(num, "Insufficient access rights");
+                case 5: ErrorNum(num, "Invalid TID.");
+                case 6: ErrorNum(num, "Invalid network name in tree connect.");
+                case 7: ErrorNum(num, "Invalid device");
+                case 49: ErrorNum(num, "Print queue full");
+                case 50: ErrorNum(num, "Print queue full");
+                case 51: ErrorNum(num, "EOF on print queue dump.");
+                case 52: ErrorNum(num, "Invalid print file FID.");
+                case 64: ErrorNum(num, "Unrecognized command");
+                case 65: ErrorNum(num, "Internal server error");
+                case 67: ErrorNum(num, "Invalid file spec");
+                case 69: ErrorNum(num, "Invalid setting of access permissions");
+                case 71: ErrorNum(num, "Invalid attribute mode");
+                case 81: ErrorNum(num, "Server is paused");
+                case 82: ErrorNum(num, "Not receiving messages");
+                case 83: ErrorNum(num, "No room to buffer message");
+                case 87: ErrorNum(num, "Too many remote user names");
+                case 88: ErrorNum(num, "Operation timed out");
+                case 89: ErrorNum(num, "No resources currently available for request");
+                case 90: ErrorNum(num, "Too many Uids active on this session");
+                case 91: ErrorNum(num, "The Uid is not known as a valid user");
+                case 250: ErrorNum(num, "Temporarily unable to support Raw mode");
+                case 251: ErrorNum(num, "Temporarily unable to support Raw mode");
+                case 252: ErrorNum(num, "Continue in MPX mode");
+                case 2239: ErrorNum(num, "This user account has expired");
+                case 2242: ErrorNum(num, "The password of this user has expired");
+                case 65535: ErrorNum(num, "Function not supported");
+            }
+            break;
+        case 3:
+            switch(suberr)
+            {
+                case 19: ErrorNum(num, "Write-protected media");
+                case 20: ErrorNum(num, "Unknown unit");
+                case 21: ErrorNum(num, "Drive not ready");
+                case 22: ErrorNum(num, "Unknown command");
+                case 23: ErrorNum(num, "Data error (CRC)");
+                case 24: ErrorNum(num, "Bad request structure length");
+                case 25: ErrorNum(num, "Seek error");
+                case 26: ErrorNum(num, "Unknown media type");
+                case 27: ErrorNum(num, "Sector not found");
+                case 28: ErrorNum(num, "Printer out of paper");
+                case 29: ErrorNum(num, "Write fault");
+                case 30: ErrorNum(num, "Read fault");
+                case 31: ErrorNum(num, "General failure");
+                case 32: ErrorNum(num, "An open conflicts with an existing open");
+                case 33: ErrorNum(num, "Lock request conflict");
+                case 34: ErrorNum(num, "The wrong disk was found in a drive");
+                case 35: ErrorNum(num, "No FCBs are available to process request");
+                case 36: ErrorNum(num, "A sharing buffer has been exceeded");
+            }
+            break;
+    }
+    sprintf(buf, "SMB error 0x%02X, 0x%04X", err, suberr);
+    ErrorNum(num, buf);
+}

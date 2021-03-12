@@ -1,0 +1,39 @@
+Library names
+=============
+
+The libraries supplied have been given consistent names in order to ensure
+that when sources are transferred between environments, the type of library
+in use is still known. The libraries supplied follow a set naming scheme :
+
+  o.<name>
+     26bit library, compiled for use within applications
+  o.<name>zm
+     26bit library, compiled for use within modules or applications
+  o.<name>-32
+     32bit library, compiled for use within applications
+  o.<name>zm-32
+     32bit library, compiled for use within modules or applications
+
+The only exception to this naming scheme is C:o.StubsG which is a 32bit
+library, compatible with either module or application code.
+
+
+Libraries
+=========
+
+The following libraries are supplied with this release :
+
+  TCPIPLibs:o.inetlib[zm][-32]
+  TCPIPLibs:o.socklib[zm][-32]
+  TCPIPLibs:o.socklib5[zm][-32]
+  TCPIPLibs:o.unixlib[zm][-32]
+  C:o.StubsG
+  TBox:o.toolboxlib[zm][-32]
+  TBox:o.eventlib[zm][-32]
+  TBox:o.renderlib[zm][-32]
+  RISC_OSLib:o.risc_oslib[zm][-32]
+  flexlib.o.flexlib[zm][-32]
+
+Some of these libraries do not differ between the module and non-module
+versions of the library, but have been supplied for consistency of naming
+and use.

@@ -1,0 +1,69 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 28/4/97: Initial version
+ */
+
+
+#include <string.h>
+#include "error.h"
+#include "fsys_err.h"
+#include "fsys.h"
+
+#include "fspsup_c.h"
+
+fsys_image_t FSPSpecialCacheLookUp(char *path, char *special)
+{
+    char buf[33], *p;
+    int len;
+
+    if(path[0] == ':')
+    {
+        path++;
+        p = strstr(path, ".$");
+        if(p == NULL)
+            ErrorNum(ERR_BadName);
+        len = p - path;
+        if(len > 32)
+            ErrorNum(ERR_BadName);
+        memcpy(buf, path, len);
+        buf[len] = 0;
+        return FsysImageFromDiscName(buf, special);
+    }
+    else if(path[0] == '$')
+    {
+        return FsysImageFromDiscName(NULL, special);
+    }
+    else
+    {
+        ErrorNum(ERR_BadName);
+        return NULL;
+    }
+}
+
+void FSPSpecialCacheFlush(void)
+{
+}

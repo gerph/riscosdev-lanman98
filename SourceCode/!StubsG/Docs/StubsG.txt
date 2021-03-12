@@ -1,0 +1,120 @@
+Generic stubs release
+=====================
+
+Introduction
+-------------
+
+The generic 'stubs' release is intended to simplify distribution and
+compilation of components. With the release of updated tools by Castle
+Technology, there has been a proliferation of applications built which
+require the use additional modules. In particular, an updated SharedCLibrary
+module and FPEmulator module are required by some tools. For many users it
+may not be an problem to upgrade, but for others, including developers
+producing software which should run with small overheads, this may not be
+ideal. In order to address this issue, a 'generic' version of the interface
+to the SharedCLibrary - colloquially known at 'stubs' - has been produced.
+
+The generic 'stubs' library ('StubsG') provides the same facilities as those
+provided by earlier versions of the interface to the SharedCLibrary to
+clients linked to it. In order to use the generic stubs library, all
+components of the object file will need to be recompiled to use the 32bit
+variant of APCS.
+
+The generic stubs library will function with any currently distributed
+version of SharedCLibrary, on either 26bit or 32bit based processors.
+
+This document does not address 32bit APCS issues, nor the differences
+between versions of the SharedCLibrary.
+
+
+Creating code compatible with generic stubs
+-------------------------------------------
+
+In order to use the generic stubs library it is necessary to compile object
+files using a different variant of APCS than is the default on most versions
+of the compiler and assembler. The generic stubs library can be used with
+the following compilers :
+
+  * Acorn C/C++ (compiler version 5.xx)
+  * Castle development tools (compiler version > 5.40)
+
+It is not suitable for use directly with GCC, nor with Acorn C (compiler
+version 4.xx or earlier).
+
+The variant of APCS required for use with the generic stubs library is :
+
+  * 32bit code
+  * Non-reentrant code
+  * Software stack checking enabled (although may be disabled at developers
+    discretion)
+  * Floating Point Emulator 2 compatible
+  * Using frame pointer
+  * Floating point registers NOT passed in floating point registers
+
+Note: Release 0.03 and earlier of the StubsG package erroneously stated that
+      floating point registers were passed in registers.
+
+The use of software stack checking is encouraged, although this can be
+disabled for certain components. Disabled software stack checking is usually
+used for released modules in order to reduce the overheads function entry.
+
+The SharedCLibrary will not function in a useful manner with re-entrant
+code. In particular, callback functions will not be supplied a static base,
+which prevents any form of non-local variables from being accessed. The use
+of re-entrant code with the SharedCLibrary is strongly discouraged.
+
+Neither SharedCLibrary nor the generic stubs library will function in a
+useful manner without a frame pointer. Amongst many issued, stack extension
+functions are reliant on a frame pointer and will not perform as desired if
+the frame pointer is corrupt. The use of code without the frame pointer is
+strongly discouraged.
+
+In order to be compatible with the greatest number of systems, Floating
+Point Emulator 2 compatibility is encouraged. The generic stubs library and
+SharedCLibrary will function if code is compiled to use only Floating Point
+Emulator 3 support.
+
+The default compilers options for Acorn C/C++ are not compatible with the
+recommended settings. It is recommended that developers explicitly specify
+the compilation settings required when compiling code such that the default
+options are overridden.
+
+The options required to compile code suitable for use with the generic stubs
+library are :
+   -apcs 3/32bit/fpe2/swstackcheck/fp/nofpregargs
+
+which may be abbreviated to :
+   -apcs 3/32/fpe2/swst/fp/nofpr
+
+These options should be included on the compiler (cc) and assembler (objasm)
+command lines.
+
+Modules should be compiled with the same options, although the
+/swst[ackcheck] option may be changed to /noswst[ackcheck] at the developers
+discretion. It is still necessary to include the -zM option on the command
+line for compiling code for use in modules.
+
+Note: Release 0.03 and earlier of the StubsG package erroneously stated that
+      floating point registers were passed in registers. The correct option
+      to pass to the compiler is /nofpr rather than /fpr.
+
+
+Linking code with the generic stubs library
+-------------------------------------------
+
+The standard linker provided with the compiler is capable of producing both
+AIF and RMF files stuitable for use with the generic stubs library. Where
+previously the object or library files would have been linked with the file
+C:o.stubs, they should now be linked against C:o.StubsG. In case of any
+issues arrising from the use of the generic stubs library, the original
+stubs library should NOT be simply replaced by StubsG. This will aid
+debugging, should problems be found with either of these libraries.
+
+
+Application requirements of components linked with StubsG
+---------------------------------------------------------
+
+When linked with the 32bit Stubs which has been distributed previously,
+applications have required '*RMEnsure' commands to be added within the !Run
+file (or equivilent) of their applications. This is not required of
+applications which use StubsG.

@@ -1,0 +1,79 @@
+# messages file for !Allocate
+#
+AppName:!Allocate
+AppDesc:Allocation Request
+AppAuthor:© Pace Micro Technology plc, 1994
+AppAuthor2:© Justin Fletcher, 2002-2003
+AppVer:1.14 (03 Jun 2003)
+RealAuthor:!Allocate was desgined and written by Jamo (and updated by Justin)
+#
+# menu bits
+#
+MIBTitle:Allocate
+MIBHits:>Info,Set details,Quit
+SMTitle:Types
+RMTitle:Reserve Types
+#
+# Main menu bits
+#
+MWTitle:Allocate
+MWHits:Save,Selection
+MSTitle:Save
+MSHits:>Save request,>Save for email|>Save reserved names,>Save reply form
+MSelTitle:Selection
+MSelHits:Delete,Clear
+#
+# errors
+#
+Det01:Unable to show details dbox
+DBNoMem:Not enough memory to create dbox
+MallocFail:Malloc failed
+NoSupp:Not currently supported
+NoFields:Some compulsory fields have not been filled in
+WrongType:Wrong type of file dragged to window
+NoSave:Nothing to save
+DCS01:Allocation request has been edited
+DCE01:Some allocation requests have beed edited
+ObjList01:Unable to build object list
+MemoryCorrupt:Crap code has resulted in massive memory corruption inside Allocate and it has to terminate now. Blame the lazy programmer who couldn't be bothered to write something decent.
+#
+# reply form text bits
+#
+RFTitle:With reference to your recent allocation request.
+RFEnd:If you have any queries then please get in contact, quoting reference _______.
+RFSWIT:The following SWI Chunks have been allocated :-
+RFMessT:The following Message blocks have been allocated :-
+RFResT:The following names have been reserved :-
+RFFTypeT:The following filetypes have been allocated :-
+RFErrorT:The following error blocks have been allocated :-
+RFPoduleT:The following Podule IDs have been allocated :-
+RFDrawTT:The following Draw Tag blocks have been allocated :-
+RFDrawOT:The following Drag Object blocks have been allocated :-
+RFFST:The following Filing System has been allocated :-
+RFServT:The following Service Call block has been allocated :-
+RFDevT:The following Device number has been allocated :-
+RFSWI1:Prefix
+RFSWI2:Base
+RFMess1:Description
+RFMess2:Base
+RFFType1:Name
+RFFType2:Number
+RFError1:Description
+RFError2:Base
+RFPodule1:Manufactures ID
+RFPodule2:Name
+RFPodule3:Number
+RFDrawT1:Description
+RFDrawT2:Base
+RFDrawO1:Description
+RFDrawO2:Base
+RFFS1:Name
+RFFS2:Number
+RFServ1:Description
+RFServ2:Base
+RFDev1:Name
+RFDev2:Base
+NoHelp:Unable to open help window
+#
+# end
+#

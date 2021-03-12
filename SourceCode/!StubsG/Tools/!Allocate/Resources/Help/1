@@ -1,0 +1,14 @@
+About Messages
+
+Message blocks are allocated to third parties who have developed an
+application that implements a Wimp Message Protocol.  They are allocated in
+blocks of 64 (&40) and allocated as one block per protocol.
+
+If a Message block is required then you will need to ensure that the 'block
+required' option is turned on and enter a description of what the block will
+be used for.
+
+To add the allocation to the list you will need to click SELECT on the 'Add' 
+icon.
+
+To abort this operation you should click SELECT on the 'Cancel' icon.

@@ -1,0 +1,204 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 12/10/96: Initial version
+ */
+
+// #include "MemCheck:MemCheck.h"
+#include "swis.h"
+#include "kernel.h"
+#include <ctype.h>
+#include <string.h>
+#include <stdio.h>
+#include "var.h"
+#include "error.h"
+#include "mapping.h"
+
+#define EXT_MAX (6)
+#define HASH_RANGE (1024)
+#define TEXT (0xFFF)
+
+typedef struct rec_s rec_t;
+
+struct rec_s {char ext[EXT_MAX+1]; int ft; rec_t *link;};
+
+static int default_type = TEXT;
+
+static rec_t *root[HASH_RANGE] = {NULL};
+
+static char *type2text(int type)
+{
+    _kernel_swi_regs r;
+    static char buf[9];
+
+    r.r[0] = 18;
+    r.r[2] = type;
+    _kernel_swi(OS_FSControl, &r, &r);
+    ((int *) buf)[0] = r.r[2];
+    ((int *) buf)[1] = r.r[3];
+    buf[8] = 0;
+    return buf;
+}
+
+static int text2type(char *text)
+{
+    _kernel_swi_regs r;
+
+    r.r[0] = 31;
+    r.r[1] = (int) text;
+    _kernel_swi(OS_FSControl, &r, &r);
+    return r.r[2];
+}
+
+static int hash(char *s)
+{
+    int res;
+
+    res = 0;
+    while(*s)
+    {
+        res += *s;
+        res = (((res >> 3) & 0x1F) | ((res << 7) & 0x3E0));
+        s++;
+    }
+    return res;
+}
+
+static void set_mapping(char *ext, int ft)
+{
+    rec_t **rec, *tmp;
+
+    rec = &root[hash(ext)];
+    while(*rec)
+    {
+        if(strcmp((*rec)->ext, ext) == 0)
+        {
+            tmp = *rec;
+            *rec = (*rec)->link;
+            Free(tmp);
+        }
+        else
+        {
+            rec = &(*rec)->link;
+        }
+    }
+    if(ft != default_type)
+    {
+        *rec = Malloc(sizeof(rec_t));
+        strcpy((*rec)->ext, ext);
+        (*rec)->ft = ft;
+        (*rec)->link = NULL;
+    }
+}
+
+static void display_mappings(void)
+{
+    rec_t *rec;
+    int i;
+
+    printf("Cifs extension RISC OS type\n");
+    printf("---------------------------\n");
+    for(i = 0; i < HASH_RANGE; i++)
+    {
+        rec = root[i];
+        while(rec)
+        {
+            printf("     %-8s  %-8s %03X\n",
+                   rec->ext, type2text(rec->ft), rec->ft);
+            rec = rec->link;
+        }
+    }
+    printf("---------------------------\n");
+}
+
+void MapInit(void)
+{
+    char *var;
+    int dt;
+
+    var = VarRead("LanMan98$DefaultType");
+    if(var)
+    {
+        if(sscanf(var, "%03x", &dt) == 1)
+        {
+            printf("Default type = %03x\n", dt);
+            default_type = dt;
+        }
+        Free(var);
+    }
+}
+
+void MapCommand(const char *args)
+{
+    char buf[80];
+    int len;
+    char *ext, *type, *p;
+
+//    MemCheck_RegisterMiscBlock(args, 80);
+    for(len = 0; len < 79 && !iscntrl(args[len]); len++)
+        buf[len] = args[len];
+    buf[len] = 0;
+    ext = strtok(buf, " \t");
+    type = strtok(NULL, " \t");
+    if(ext && strlen(ext) > EXT_MAX)
+        Error("CIFS extensions limited to six characters");
+    if(ext)
+        for(p = ext; *p; p++)
+            *p = toupper(*p);
+    if(type)
+        set_mapping(ext, text2type(type));
+    else if(ext)
+        set_mapping(ext, default_type);
+    else
+        display_mappings();
+//    MemCheck_UnRegisterMiscBlock(args);
+}
+
+int MapApply(char *ext)
+{
+    rec_t *rec;
+    char uext[5];
+    int i;
+
+    if(ext == NULL || strlen(ext) > EXT_MAX)
+        return default_type;
+    for(i = 0; ext[i]; i++)
+        uext[i] = toupper(ext[i]);
+    uext[i] = ext[i];
+    rec = root[hash(uext)];
+    while(rec)
+    {
+        if(strcmp(rec->ext, uext) == 0)
+            return rec->ft;
+        else
+            rec = rec->link;
+    }
+    if(_swix(0x50B00, _INR(0,2)|_OUT(3), 3, (int) ext, 0, &i))
+        return default_type;
+    else
+        return i;
+}
+

@@ -1,0 +1,1 @@
+IF "<BaseLIB$Path>" = "" Then Set BaseLIB$Path <Obey$Dir>.

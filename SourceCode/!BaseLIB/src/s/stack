@@ -1,0 +1,48 @@
+;
+; CDDL HEADER START
+;
+; The contents of this file are subject to the terms of the
+; Common Development and Distribution License (the "Licence").
+; You may not use this file except in compliance with the Licence.
+;
+; You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+; or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+; See the Licence for the specific language governing permissions
+; and limitations under the Licence.
+;
+; When distributing Covered Code, include this CDDL HEADER in each
+; file and include the Licence file. If applicable, add the
+; following below this CDDL HEADER, with the fields enclosed by
+; brackets "[]" replaced with your own identifying information:
+; Portions Copyright [yyyy] [name of copyright owner]
+; 
+; CDDL HEADER END
+;
+ 
+;    Copyright 1998 Warm Silence Software Ltd.  All rights reserved.
+
+;    PHBG  24/7/98: Initial version
+
+        AREA    |C$$code|, CODE, READONLY
+|x$codeseg|
+
+        EXPORT _get_stack
+	EXPORT _set_stack
+
+_get_stack
+	MOV R0, R13
+ [ ATPCS32
+	MOV PC, R14
+ |
+	MOVS PC, R14
+ ]
+
+_set_stack
+	MOV R13, R0
+ [ ATPCS32
+	MOV PC, R14
+ |
+	MOVS PC, R14
+ ]
+
+	END

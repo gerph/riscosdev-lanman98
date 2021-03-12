@@ -1,0 +1,112 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG 28/4/97: Initial version
+ */
+
+#include <string.h>
+#include "strext.h"
+#include "memory.h"
+#include "path.h"
+#include "fspsup_a.h"
+
+
+static fsys_image_t cat_img;
+
+typedef struct
+{
+    char *name;
+    int i;
+    fsys_object_t f;
+} cat_t;
+
+static cat_t cat[MAX_DEPTH] = {0};
+
+static int depth(char *name)
+{
+    int d;
+
+    d = 0;
+    while(*name)
+        if(*name++ == '.')
+            d++;
+    return d;
+}
+
+static void drop(int d)
+{
+    if(cat[d].name)
+    {
+        Free(cat[d].name);
+        if(cat[d].f) FsysFree(cat[d].f);
+        cat[d].name = NULL;
+    }
+}
+
+
+void FSPCatCacheDrop(void)
+{
+    int i;
+
+    for(i = 0; i < MAX_DEPTH; i++)
+        drop(i);
+}
+
+
+void FSPCatCacheHold(char *name, fsys_image_t img, int i, fsys_object_t f)
+{
+    int d;
+
+    // printf("Hold %s, %d\n", name, i);
+    if(img != cat_img)
+        FSPCatCacheDrop();
+    cat_img = img;
+    d = depth(name);
+    drop(d);
+    cat[d].name = strdup(name);
+    cat[d].i = i;
+    cat[d].f = f;
+}
+
+int FSPCatCacheRetrieve(char *name, fsys_image_t img, int i, fsys_object_t *f)
+{
+    int d;
+
+    // printf("Retrieve %s, %d\n", name, i);
+    if(img != cat_img)
+        return NULL;
+    d = depth(name);
+    if(cat[d].name && strcmp(cat[d].name, name) == 0 && cat[d].i == i)
+    {
+        *f = cat[d].f ? FsysDup(cat[d].f) : NULL;
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+

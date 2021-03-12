@@ -1,0 +1,225 @@
+/*
+ * CDDL HEADER START
+ *
+ * The contents of this file are subject to the terms of the
+ * Common Development and Distribution License (the "Licence").
+ * You may not use this file except in compliance with the Licence.
+ *
+ * You can obtain a copy of the licence at RISC OS path @.^.LICENCE
+ * or  http://www.riscosdev.com/lanman98/LICENCE.CDDL
+ * See the Licence for the specific language governing permissions
+ * and limitations under the Licence.
+ *
+ * When distributing Covered Code, include this CDDL HEADER in each
+ * file and include the Licence file. If applicable, add the
+ * following below this CDDL HEADER, with the fields enclosed by
+ * brackets "[]" replaced with your own identifying information:
+ * Portions Copyright [yyyy] [name of copyright owner]
+ *
+ * CDDL HEADER END
+ */
+ 
+/*
+ *   Copyright 1996 Warm Silence Software Ltd.  All rights reserved.
+ *   Use is subject to license terms.
+ */
+
+/*   PHBG  21/12/98: Initial version
+ */
+
+#include <stdio.h>
+#include <string.h>
+#include "swis.h"
+#include "strext.h"
+#include "error.h"
+#include "fsys_err.h"
+#include "netbios.h"
+#include "logon.h"
+#include "smb.h"
+
+#include "printer.h"
+
+struct fsys_handle_s
+{
+    int is_printer;
+    int fd;
+    char *server;
+    char *share;
+    char *addr;
+    smb_server_t smb_server;
+    smb_handle_t smb_handle;
+};
+
+static int file_descriptor_in_use[256] = {0};
+
+static char sbuf[256];
+static char *server;
+static char *path;
+static char *user;
+static char *password;
+
+void PrinterCloseAll(void)
+{
+    int i;
+
+    for(i = 1; i <256; i++)
+        if(file_descriptor_in_use[i])
+            _swix(OS_Find, _IN(0)|_IN(1), 0, i);
+}
+
+static char *nstrtok(char *buf)
+{
+    static char *pos;
+    char *res;
+
+    if(buf)
+        pos = buf;
+    if(*pos == 0)
+    {
+        res = NULL;
+    }
+    else
+    {
+        res = pos;
+        while(*pos != 0 && *pos != ';')
+            pos++;
+        if(*pos == ';')
+        {
+            *pos = 0;
+            pos++;
+        }
+    }
+    return res;
+}
+
+fsys_image_t PrinterImageFromSpecialField(char *special)
+{
+    if(strlen(special) >= 256)
+        ErrorNum(ERR_DiscNotFound);
+    strcpy(sbuf, special);
+    if(strcmp(nstrtok(sbuf), "printer") != 0)
+        ErrorNum(ERR_DiscNotFound);
+    server = nstrtok(NULL);
+    path = nstrtok(NULL);
+    user = nstrtok(NULL);
+    password = nstrtok(NULL);
+    if(server == NULL || *server == 0 || path == NULL || *path == 0)
+        ErrorNum(ERR_DiscNotFound);
+    return (fsys_image_t) -1;
+}
+
+int PrinterClaimsImage(fsys_image_t img)
+{
+    return img == (fsys_image_t) -1;
+}
+
+void PrinterImageRefuse(fsys_image_t img, int n)
+{
+    if(img == (fsys_image_t) -1)
+        Error("Invalid operation on LanMan98 printer file: I%d", n);
+}
+
+fsys_object_t PrinterPath2Object(path_t path, fsys_image_t img)
+{
+    return (fsys_object_t) -1;
+}
+
+int PrinterClaimsObject(fsys_object_t obj)
+{
+    return obj == (fsys_object_t) -1;
+}
+
+void PrinterObjectRefuse(fsys_object_t obj, int n)
+{
+    if(obj == (fsys_object_t) -1)
+        Error("Invalid operation on LanMan98 printer file: O%d", n);
+}
+
+fsys_handle_t PrinterOpen(fsys_object_t obj, int update, unsigned int fd)
+{
+    fsys_handle_t h;
+
+    h = Malloc(sizeof(*h));
+    memset(h, 0, sizeof(*h));
+    ExceptTry
+    {
+        h->is_printer = 1;
+        h->fd = fd;
+        if(fd < 256)
+            file_descriptor_in_use[fd] = 1;
+        h->server = strdup(server);
+        h->share = Malloc(strlen(h->server) + strlen(path) + 4);
+        h->addr = NULL;
+        {
+            char *addr;
+            int l;
+
+            addr = strchr(h->server, '{');
+            if (addr)
+            {
+                l = strlen(addr)-1;
+                if (addr[l] != '}')
+                    Error("Incorrectly specified server IP address.  Put the IP address in angle brackets after the NetBIOS name.");
+                /* Reterminate the server name */
+                *addr = 0;
+                /* Remove the > */
+                addr[l] = 0;
+                h->addr = strdup(addr+1);
+            }
+        }
+        sprintf(h->share, "\\\\%s\\%s", h->server, path);
+        if (h->addr == NULL)
+            h->addr = NetBIOSResolve(h->server);
+        h->smb_server = SMBConnectPrinter(h->addr,
+                                          139,
+                                          h->server,
+                                          h->share,
+                                          user ? user
+                                               : LoggedOnUser(h->server),
+                                          password ? password
+                                                   : LoggedOnPassword(h->server));
+    }
+    ExceptCatch
+    {
+        PrinterClose(h);
+        ExceptRethrow();
+    }
+    return h;
+}
+
+void PrinterLimitSize(fsys_handle_t h, int s)
+{
+    if(h->smb_handle)
+        SMBSetExtent(h->smb_handle, s);
+}
+
+fsys_object_t PrinterHandle2File(fsys_handle_t h)
+{
+    return (fsys_object_t) -1;
+}
+
+void PrinterClose(fsys_handle_t h)
+{
+    if(h)
+    {
+        if(h->fd < 256)
+            file_descriptor_in_use[h->fd] = 0;
+        Free(h->server);
+        Free(h->share);
+        Free(h->addr);
+
+        if(h->smb_handle)
+            SMBClose(h->smb_handle);
+
+        SMBDropServer(h->smb_server);
+        Free(h);
+    }
+}
+
+void PrinterWrite(void *buf, int pos, int count, fsys_handle_t h)
+{
+    if(h->smb_handle == NULL)
+        h->smb_handle = SMBOpenPrinter(h->smb_server);
+
+    SMBWrite(buf, pos, count, h->smb_handle);
+}

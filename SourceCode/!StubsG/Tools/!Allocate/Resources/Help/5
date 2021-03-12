@@ -1,0 +1,16 @@
+About Podules
+
+Podule allocations are made for third parties who are developing Expansion
+Cards.  Before a RISC OS Expansion Card can be implemented a Podule Id is
+required and a Manufacturer's Number.  If a Manufacturer's Number has not
+been allocated for your company then you will need to ensure that the
+'Allocate' option is turned on.  If you already have a Manufacturer's Number
+then you will need to enter it the Id field.
+
+If a Podule Id is required then you will need to enter the name of the podule
+and a description of what it will be used for.
+
+To add the allocation to the list you will need to click SELECT on the 'Add' 
+icon.
+
+To abort this operation you should click SELECT on the 'Cancel' icon.

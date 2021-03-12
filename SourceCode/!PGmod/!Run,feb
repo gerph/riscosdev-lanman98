@@ -1,0 +1,3 @@
+IconSprites <Obey$Dir>.!Sprites
+Set PG$Path <Obey$Dir>.
+Filer_OpenDir <Obey$Dir>.h
