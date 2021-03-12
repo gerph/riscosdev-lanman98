@@ -1,0 +1,97 @@
+#!/usr/bin/env riscos-amu -f
+# Makefile for LanMan98BaseLib
+#
+
+#
+# Program specific options:
+#
+COMPONENT  = LanMan98BaseLib
+
+# Specifies additional targets for startup
+#INITTARGET = inittarget
+
+# Specifies additional targets for clean
+#CLEANTARGET = cleantarget
+
+# Files to export as part of export_hdr or export_libs
+# To export to the library in a subdirectory, use an export like:
+#   ${EXP_LIB}.${COMPONENT}.h.myheader
+EXPORTS    = ${EXP_LIB}.${COMPONENT}.h.blocked \
+             ${EXP_LIB}.${COMPONENT}.h.callback \
+             ${EXP_LIB}.${COMPONENT}.h.caller \
+             ${EXP_LIB}.${COMPONENT}.h.debug \
+             ${EXP_LIB}.${COMPONENT}.h.error \
+             ${EXP_LIB}.${COMPONENT}.h.errorxxx \
+             ${EXP_LIB}.${COMPONENT}.h.memory \
+             ${EXP_LIB}.${COMPONENT}.h.nsetjmp \
+             ${EXP_LIB}.${COMPONENT}.h.strext \
+             ${EXP_LIB}.${COMPONENT}.h.tcp \
+             ${EXP_LIB}.${COMPONENT}.h.thread \
+             ${EXP_LIB}.${COMPONENT}.h.time \
+             ${EXP_LIB}.${COMPONENT}.h.memcheckcompat \
+
+# Comma-separated list of paths to use for includes, such as:
+#	<Lib$Dir>.LibName.
+INCLUDES   = C:LanMan98BaseLib.,TCPIPLibs:
+
+# Space separated list of defines to set, eg -DDEBUG
+CDEFINES   =
+
+# Objects to build, using the format o.<name> (will be varied for build type)
+OBJS       = o.blocked \
+             o.blockedCS \
+             o.callback \
+             o.caller \
+             o.debug \
+             o.error \
+             o.gethost \
+             o.gethost_ \
+             o.heap \
+             o.memory \
+             o.nsetjmp \
+             o.stack \
+             o.strext \
+             o.tcpbsd \
+             o.thread \
+             o.time \
+
+UNUSED = \
+             o.memoryH \
+             o.memoryL \
+
+
+include LibExport
+
+# Export rules
+# For any files you export with EXPORTS you may need to include an
+# export rule
+${EXP_LIB}.${COMPONENT}.h.blocked: h.blocked
+		${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.callback: h.callback
+		${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.caller: h.caller
+		${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.debug: h.debug
+		${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.error: h.error
+		${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.errorxxx: h.errorxxx
+		${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.memory: h.memory
+		${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.nsetjmp: h.nsetjmp
+		${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.strext: h.strext
+		${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.tcp: h.tcp
+		${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.thread: h.thread
+		${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.time: h.time
+		${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.memcheckcompat: h.memcheckcompat
+		${CP} $? $@ ${CPFLAGS}
+
+
+#---------------------------------------------------------------------------
+# Dynamic dependencies:

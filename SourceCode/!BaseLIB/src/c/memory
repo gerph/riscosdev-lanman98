@@ -27,7 +27,7 @@
 /*   PHBG 7/10/96: Initial version
  */
 
-#include "MemCheck:MemCheck.h"
+#include "memcheckcompat.h"
 #include "kernel.h"
 #include "swis.h"
 #include <stdlib.h>

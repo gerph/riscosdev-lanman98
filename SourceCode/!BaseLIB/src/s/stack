@@ -31,7 +31,7 @@
 
 _get_stack
 	MOV R0, R13
- [ ATPCS32
+ [ {CONFIG} = 32
 	MOV PC, R14
  |
 	MOVS PC, R14
@@ -39,7 +39,7 @@ _get_stack
 
 _set_stack
 	MOV R13, R0
- [ ATPCS32
+ [ {CONFIG} = 32
 	MOV PC, R14
  |
 	MOVS PC, R14

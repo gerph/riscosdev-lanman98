@@ -34,7 +34,7 @@ BlockedWait0
 	MOV	R10,R10,LSL #20
 	LDMIA	R10,{R4,R5}
 	STMFD	R13!,{R4,R5}
- [ ATPCS32
+ [ {CONFIG} = 32
 	MRS	R0,CPSR		; Change to USR mode
 	BIC	R0,R0,#3
 	MSR	CPSR_c,R0
@@ -50,7 +50,7 @@ BlockedWait0
 	MOV	R10,R10,LSL #20
 	LDMFD	R13!,{R4,R5}
 	STMIA	R10,{R4,R5}
- [ ATPCS32
+ [ {CONFIG} = 32
         MSR     CPSR_f,#0
         LDMFD   R13!,{R0-R12,PC}
  |

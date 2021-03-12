@@ -32,7 +32,7 @@
  *   PHBG 27/7/98:  Threaded version
  */
 
-#include "MemCheck:MemCheck.h"
+#include "memcheckcompat.h"
 #include <string.h>
 #include "TCPIPLibs.errno.h"
 #include "socklib.h"

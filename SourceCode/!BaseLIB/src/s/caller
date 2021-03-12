@@ -31,14 +31,14 @@
 caller ;(void)
         MOV R0, R11
         TEQ R0, #0
- [ ATPCS32
+ [ {CONFIG} = 32
         MOVEQ PC, R14
  |
         MOVEQS PC, R14
  ]
         LDR R0, [R0, #-12]
         TEQ R0, #0
- [ ATPCS32
+ [ {CONFIG} = 32
         MOVEQ PC, R14
  |
         MOVEQS PC, R14
@@ -57,7 +57,7 @@ caller ;(void)
         ANDEQ R1, R1, #&FF
         SUBEQ R0, R0, R1
         ADRNE R0, noname
- [ ATPCS32
+ [ {CONFIG} = 32
         MSR CPSR_f,#0
         MOV PC, R14
  |

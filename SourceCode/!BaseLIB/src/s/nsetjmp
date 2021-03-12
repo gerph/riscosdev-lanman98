@@ -32,7 +32,7 @@
 SetJmp
 	STMIA	R0, {R1-R14}
 	MOV	R0, #0
- [ ATPCS32
+ [ {CONFIG} = 32
         MOV	PC, R14
  |
         MOVS	PC, R14
@@ -41,7 +41,7 @@ SetJmp
 LongJmp
 	LDMIA	R0, {R1-R14}
 	MOV	R0, #1
- [ ATPCS32
+ [ {CONFIG} = 32
 	MOV	PC, R14
  |
         MOVS	PC, R14

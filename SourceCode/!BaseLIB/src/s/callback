@@ -36,7 +36,7 @@ CallBackInit ;(pw)
         LDR R1, pw_ref
         LDR R12, [R10, #-536]
         STR R0, [R12, R1]
- [ ATPCS32
+ [ {CONFIG} = 32
         MOV PC, R14
  |
         MOVS PC, R14
@@ -60,7 +60,7 @@ find_empty_rec
 	SUBS	R5, R5, #1
 	BNE	find_empty_rec
 	SWI	OS_IntOn
- [ ATPCS32
+ [ {CONFIG} = 32
         MSR     CPSR_f,#0
 	LDMFD	R13!, {R4-R6, PC}
  |
@@ -75,7 +75,7 @@ found_empty_rec
 	ADR	R1, call_after_handler
 	MOV	R2, R4
 	SWI	XOS_CallAfter
- [ ATPCS32
+ [ {CONFIG} = 32
         MSR     CPSR_f,#0
 	LDMFD	R13!, {R4-R6, PC}
  |
@@ -85,7 +85,7 @@ direct_callback
         ADR     R0, call_back_handler
         MOV     R1, R4
 	SWI	XOS_AddCallBack
- [ ATPCS32
+ [ {CONFIG} = 32
         MSR     CPSR_f,#0
 	LDMFD	R13!, {R4-R6, PC}
  |
@@ -110,7 +110,7 @@ kill_rec
 	ADD	R4, R4, #(4*3)
 	SUBS	R5, R5, #1
 	BNE	kill_rec
- [ ATPCS32
+ [ {CONFIG} = 32
         MSR     CPSR_f,#0
 	LDMFD	R13!, {R4-R5, PC}
  |

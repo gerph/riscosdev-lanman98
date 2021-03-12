@@ -27,7 +27,7 @@
 /*   PHBG 24/7/98: Initial version
  */
 
-#include "MemCheck:MemCheck.h"
+#include "memcheckcompat.h"
 #include <string.h>
 #include <stdio.h>
 #include "nsetjmp.h"

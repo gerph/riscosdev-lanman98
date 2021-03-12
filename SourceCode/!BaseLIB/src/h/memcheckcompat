@@ -1,0 +1,18 @@
+/* Compatibility for MemCheck headers not being present */
+
+#ifndef MEMCHECKCOMPAT_H
+#define MEMCHECKCOMPAT_H
+
+#ifdef USE_MEMCHECK
+
+#include "MemCheck:MemCheck.h"
+
+#else
+
+#define MemCheck_SetChecking(_x, _y) /* Nothing */
+#define MemCheck_RegisterMiscBlock(_x, _y) /* Nothing */
+#define MemCheck_Printf if (0) printf
+
+#endif
+
+#endif

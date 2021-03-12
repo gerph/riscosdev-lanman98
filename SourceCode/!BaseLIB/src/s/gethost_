@@ -36,7 +36,7 @@ gethost_
         STR	R0,[R2]		; Put return code into buffer
         STR	R1,[R3]		; Put hostent into buffer
 	MOVVC	R0,#0		; If no error, return no error
- [ ATPCS32
+ [ {CONFIG} = 32
         LDMFD R13!,{PC}
  |
         LDMFD R13!,{PC}^

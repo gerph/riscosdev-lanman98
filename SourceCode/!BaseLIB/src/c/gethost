@@ -29,7 +29,7 @@
  *   PHBG 3/9/97: Added gethostbyname to deal with local networks
  */
 
-#include "MemCheck.MemCheck.h"
+#include "memcheckcompat.h"
 #include "inetlib.h"
 #include "netdb.h"
 #include "sys/types.h"
