@@ -1,0 +1,9 @@
+LanMan98 RISC OS Developments release
+
+This repository is under a mixed license.
+
+The bulk of the repository is under the CDDL.
+The StubsG release is under a separate license.
+The CMunge binary release is under a third.
+
+Consult indvidual directories for license details.
