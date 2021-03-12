@@ -11,6 +11,7 @@
 
 #define MemCheck_SetChecking(_x, _y) /* Nothing */
 #define MemCheck_RegisterMiscBlock(_x, _y) /* Nothing */
+#define MemCheck_UnRegisterMiscBlock(_x) /* Nothing */
 #define MemCheck_Printf if (0) printf
 
 #endif

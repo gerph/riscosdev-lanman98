@@ -7,9 +7,19 @@ other special requirements
 * !BaseLib:
     * Moved the old `Makefile` to `Makefile.old`.
     * Removed binary objects.
-    * New Makefile created which allows the building into the library `LanMan98baseLib`.
+    * New Makefile created which allows the building into the library `LanMan98BaseLib`.
     * Replaced use of `ATPS32` with `{CONFIG} = 32`.
     * Selected the `memory.c` implementation over the `memoryH.c` and `memoryL.c`.
     * Ignored the DEMO build requirements.
     * Added `memcheckcompat.h` to allow building without any MemCheck headers present.
       Add USE_MEMCHECK to the defines to build with MemCheck.
+
+* !FSLib:
+    * Moved the old `Makefile` to `Makefile.old`.
+    * Removed binary objects.
+    * New Makefile created which allows the building into the library `LanMan98FSLib`.
+    * Changed references in the C files to use `LanMan98BaseLib/...` for exported parts
+      of the system.
+    * Included only the 32bit build version of the veneer (which I think is the right one).
+      FIXME: Could instead use the 26bit file if in the 26bit with some conditional includes.
+    * Ignored the DEMO build requirements.

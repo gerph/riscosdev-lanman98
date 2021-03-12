@@ -28,8 +28,8 @@
  */
 
 #include <string.h>
-#include "strext.h"
-#include "memory.h"
+#include "LanMan98BaseLib/strext.h"
+#include "LanMan98BaseLib/memory.h"
 #include "path.h"
 #include "fspsup_a.h"
 

@@ -1,0 +1,68 @@
+#!/usr/bin/env riscos-amu -f
+# Makefile for LanMan98FSLib
+#
+
+#
+# Program specific options:
+#
+COMPONENT  = LanMan98FSLib
+
+# Specifies additional targets for startup
+#INITTARGET = inittarget
+
+# Specifies additional targets for clean
+#CLEANTARGET = cleantarget
+
+# Files to export as part of export_hdr or export_libs
+# To export to the library in a subdirectory, use an export like:
+#   ${EXP_LIB}.${COMPONENT}.h.myheader
+EXPORTS    = ${EXP_LIB}.${COMPONENT}.h.fspatch \
+             ${EXP_LIB}.${COMPONENT}.h.fsys \
+             ${EXP_LIB}.${COMPONENT}.h.fsys_err \
+             ${EXP_LIB}.${COMPONENT}.h.path \
+
+# Comma-separated list of paths to use for includes, such as:
+#   <Lib$Dir>.LibName.
+INCLUDES   =
+
+# Space separated list of defines to set, eg -DDEBUG
+CDEFINES   =
+
+# Objects to build, using the format o.<name> (will be varied for build type)
+OBJS       = o.fspatch \
+             o.fspsup_a \
+             o.fspsup_b \
+             o.fspsup_c \
+             o.fspsup_d \
+             o.fspsup_dC \
+             o.fspsup_e \
+             o.veneer32 \
+
+
+# These files are just so that it's easy to generate the content of the
+# o.veneer files.
+UNUSED_ASM = \
+             o.VeneerAsm26 \
+             o.VeneerAsm32 \
+             o.VeneerAsmN \
+UNUSED_C = \
+             o.veneer26 \
+             o.veneer \
+
+include LibExport
+
+# Export rules
+# For any files you export with EXPORTS you may need to include an
+# export rule
+${EXP_LIB}.${COMPONENT}.h.fspatch: h.fspatch
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.fsys: h.fsys
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.fsys_err: h.fsys_err
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.path: h.path
+        ${CP} $? $@ ${CPFLAGS}
+
+
+#---------------------------------------------------------------------------
+# Dynamic dependencies:

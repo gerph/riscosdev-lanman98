@@ -27,16 +27,16 @@
 /*   PHBG 7/10/96: Initial version
  */
 
-#include "MemCheck:MemCheck.h"
+#include "LanMan98BaseLib/memcheckcompat.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
-#include "strext.h"
+#include "LanMan98BaseLib/strext.h"
 #include "swis.h"
 #include "kernel.h"
 #include "rmbase.h"
 #include "veneer.h"
-#include "error.h"
+#include "LanMan98BaseLib/error.h"
 #include "fsys_err.h"
 #include "fsys.h"
 #include "fspsup_a.h"

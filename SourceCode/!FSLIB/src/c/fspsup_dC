@@ -28,9 +28,9 @@
  */
 
 #include <string.h>
-#include "strext.h"
-#include "memory.h"
-#include "error.h"
+#include "LanMan98BaseLib/strext.h"
+#include "LanMan98BaseLib/memory.h"
+#include "LanMan98BaseLib/error.h"
 #include "fsys_err.h"
 #include "fsys.h"
 #include "fspsup_e.h"
