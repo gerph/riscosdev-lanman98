@@ -28,7 +28,7 @@
  */
 
 #include <string.h>
-#include "memory.h"
+#include "LanMan98BaseLib/memory.h"
 
 #include "des.h"
 

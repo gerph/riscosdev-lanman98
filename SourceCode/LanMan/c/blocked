@@ -29,8 +29,8 @@
 
 // #include "MemCheck:MemCheck.h"
 #include "swis.h"
-#include "error.h"
-#include "time.h"
+#include "LanMan98BaseLib/error.h"
+#include "LanMan98BaseLib/time.h"
 #include "var.h"
 #include "prod.h"
 

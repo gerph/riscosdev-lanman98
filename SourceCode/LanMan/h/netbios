@@ -30,7 +30,7 @@
 #ifndef _NET_BIOS_
 #define _NET_BIOS_
 
-#include "tcp.h"
+#include "LanMan98BaseLib/tcp.h"
 
 
 int NetBIOSEncodeName(char *out, char *name);

@@ -30,7 +30,7 @@
 #ifndef _PRINTER_
 #define _PRINTER_
 
-#include "fsys.h"
+#include "LanMan98FSLib/fsys.h"
 
 void PrinterCloseAll(void);
 

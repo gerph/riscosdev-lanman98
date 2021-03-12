@@ -32,13 +32,13 @@
 #include <string.h>
 #include <stdio.h>
 #include "nodebug.h"
-#include "strext.h"
+#include "LanMan98BaseLib/strext.h"
 #include "date.h"
 #include "word.h"
 #include "data.h"
-#include "error.h"
-#include "memory.h"
-#include "tcp.h"
+#include "LanMan98BaseLib/error.h"
+#include "LanMan98BaseLib/memory.h"
+#include "LanMan98BaseLib/tcp.h"
 #include "smbcmd.h"
 #include "smberr.h"
 #include "vc.h"

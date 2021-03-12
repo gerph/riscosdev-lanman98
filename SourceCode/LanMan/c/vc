@@ -32,12 +32,12 @@
 #include <string.h>
 #include "kernel.h"
 #include "swis.h"
-#include "error.h"
-#include "memory.h"
-#include "blocked.h"
-#include "thread.h"
-#include "tcp.h"
-#include "time.h"
+#include "LanMan98BaseLib/error.h"
+#include "LanMan98BaseLib/memory.h"
+#include "LanMan98BaseLib/blocked.h"
+#include "LanMan98BaseLib/thread.h"
+#include "LanMan98BaseLib/tcp.h"
+#include "LanMan98BaseLib/time.h"
 #include "netbios.h"
 
 #include "vc.h"

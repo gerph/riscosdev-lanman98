@@ -30,9 +30,9 @@
 #include <stdio.h>
 #include <string.h>
 #include "swis.h"
-#include "strext.h"
-#include "error.h"
-#include "fsys_err.h"
+#include "LanMan98BaseLib/strext.h"
+#include "LanMan98BaseLib/error.h"
+#include "LanMan98FSLib/fsys_err.h"
 #include "netbios.h"
 #include "logon.h"
 #include "smb.h"

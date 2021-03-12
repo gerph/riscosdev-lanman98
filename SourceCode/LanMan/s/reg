@@ -48,7 +48,7 @@ loop
         CMP R1, R0
         MOVEQ R0, #1
         MOVNE R0, #0
- [ ATPCS32
+ [ {CONFIG} = 32
 	MSR CPSR_f, #0
 	MOV PC, R14
  |

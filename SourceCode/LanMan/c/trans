@@ -28,8 +28,8 @@
  */
 
 #include <string.h>
-#include "memory.h"
-#include "error.h"
+#include "LanMan98BaseLib/memory.h"
+#include "LanMan98BaseLib/error.h"
 #include "data.h"
 #include "vc.h"
 #include "smbcmd.h"

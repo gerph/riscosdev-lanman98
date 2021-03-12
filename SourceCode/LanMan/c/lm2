@@ -30,15 +30,15 @@
 // #include "MemCheck:MemCheck.h"
 #include <stdio.h>
 #include <string.h>
-#include "error.h"
-#include "memory.h"
+#include "LanMan98BaseLib/error.h"
+#include "LanMan98BaseLib/memory.h"
 #include "vc.h"
 #include "mb.h"
 #include "smbcmd.h"
 #include "smb.h"
 #include "smberr.h"
 #include "trans.h"
-#include "strext.h"
+#include "LanMan98BaseLib/strext.h"
 #include "date.h"
 
 #include "lm2.h"

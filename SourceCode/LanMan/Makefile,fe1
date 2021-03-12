@@ -1,0 +1,90 @@
+#!/usr/bin/env riscos-amu -f
+# Makefile for LanMan98
+#
+
+#
+# Program specific options:
+#
+COMPONENT  = LanMan98
+
+# Specifies additional targets for startup
+#INITTARGET = inittarget
+
+# Specifies additional targets for clean
+CLEANTARGET = cleantarget
+
+# Files to export as part of export_hdr or export_libs
+# To export to the standard C: path, you might use an export like:
+#   ${EXP_C_H}.${COMPONENT}SWIs
+# To export to the library in a subdirectory, use an export like:
+#   ${EXP_LIB}.${COMPONENT}.h.myheader
+EXPORTS    =  # ${EXP_C_H}.${COMPONENT}SWIs
+
+# Resources you want to be exported as part of the 'resources' phase of the build
+#RESOURCES  = ${RESDIR}.${COMPONENT}.Messages
+
+# Comma-separated list of paths to use for includes, such as:
+#   <Lib$Dir>.LibName.
+INCLUDES   =
+
+# Space separated list of libraries to link against.
+# (${CLIB} is implicit, unless NOCLIB = yes)
+LIBS       = C:LanMan98BaseLib.o.libLanMan98BaseLib \
+             C:LanMan98FSLib.o.libLanMan98FSLib \
+             TCPIPLibs:o.socklib \
+             TCPIPLibs:o.inetlib \
+             TCPIPLibs:o.unixlib \
+
+# Space separated list of defines to set, eg -DDEBUG
+CDEFINES   =
+
+# Objects to build, using the format o.<name> (will be varied for build type)
+OBJS       = \
+             o.base \
+             o.blocked \
+             o.date \
+             o.debug \
+             o.des \
+             o.fsys \
+             o.lm2 \
+             o.logon \
+             o.mapping \
+             o.mb \
+             o.md4 \
+             o.omniheader \
+             o.netbios \
+             o.omnimain \
+             o.printer \
+             o.prod \
+             o.reg \
+             o.showfree \
+             o.smb \
+             o.smberr \
+             o.trans \
+             o.var \
+             o.vc \
+             o.word \
+
+FILER = o.filer98 \
+        o.lm98enum \
+
+include CModule
+
+# Additional dependencies
+$(OZDIR).omnimain: h.omniheader
+
+# Export rules
+# For any files you export with EXPORTS you may need to include an
+# export rule
+#${EXP_C_H}.${COMPONENT}SWIs: cmhg.modhead
+#       ${CMHG} ${CMHGFLAGS} -xh $@ cmhg.modhead
+# To export bare files you can use the ${CP} command:
+# ${EXP_LIB}.${COMPONENT}.h.myheader: h.myheader
+#        ${CP} $?  $@  ${CPFLAGS}
+
+# This clean target removes any module header file that was built.
+cleantarget:
+           ${RM} h.omniheader
+
+#---------------------------------------------------------------------------
+# Dynamic dependencies:

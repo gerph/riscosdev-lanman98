@@ -29,10 +29,10 @@
 
 #include <stdio.h>
 #include <string.h>
-#include "error.h"
-#include "memory.h"
+#include "LanMan98BaseLib/error.h"
+#include "LanMan98BaseLib/memory.h"
 #include "word.h"
-#include "strext.h"
+#include "LanMan98BaseLib/strext.h"
 #include "var.h"
 #include "trans.h"
 #include "smb.h"

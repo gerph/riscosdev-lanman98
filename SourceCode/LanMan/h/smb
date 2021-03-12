@@ -34,8 +34,8 @@
 #define NULL (0)
 #endif
 
-#include "tcp.h"
-#include "path.h"
+#include "LanMan98BaseLib/tcp.h"
+#include "LanMan98FSLib/path.h"
 #include "smbbase.h"
 
 #define SMB_READONLY	(0x01)

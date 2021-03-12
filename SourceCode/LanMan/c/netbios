@@ -30,14 +30,14 @@
 #include <ctype.h>
 #include <string.h>
 #include <stdio.h>
-#include "strext.h"
-#include "error.h"
-#include "memory.h"
-#include "blocked.h"
-#include "thread.h"
+#include "LanMan98BaseLib/strext.h"
+#include "LanMan98BaseLib/error.h"
+#include "LanMan98BaseLib/memory.h"
+#include "LanMan98BaseLib/blocked.h"
+#include "LanMan98BaseLib/thread.h"
 #include "word.h"
-#include "tcp.h"
-#include "time.h"
+#include "LanMan98BaseLib/tcp.h"
+#include "LanMan98BaseLib/time.h"
 #include "var.h"
 #include "netbios.h"
 

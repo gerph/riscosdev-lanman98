@@ -32,15 +32,15 @@
 #include <stdio.h>
 #include <ctype.h>
 #include "swis.h"
-#include "strext.h"
-#include "memory.h"
-#include "error.h"
-#include "time.h"
-#include "callback.h"
-#include "blocked.h"
-#include "thread.h"
-#include "fsys_err.h"
-#include "fspatch.h"
+#include "LanMan98BaseLib/strext.h"
+#include "LanMan98BaseLib/memory.h"
+#include "LanMan98BaseLib/error.h"
+#include "LanMan98BaseLib/time.h"
+#include "LanMan98BaseLib/callback.h"
+#include "LanMan98BaseLib/blocked.h"
+#include "LanMan98BaseLib/thread.h"
+#include "LanMan98FSLib/fsys_err.h"
+#include "LanMan98FSLib/fspatch.h"
 #include "date.h"
 #include "var.h"
 #include "mapping.h"
@@ -52,7 +52,7 @@
 #include "printer.h"
 #include "nodebug.h"
 
-#include "fsys.h"
+#include "LanMan98FSLib/fsys.h"
 #include "mount.h"
 
 #define MAX_SERVER_NAME_LEN (20)

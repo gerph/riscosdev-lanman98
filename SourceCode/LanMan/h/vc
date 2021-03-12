@@ -31,7 +31,7 @@
 #define _VC_
 
 #include "data.h"
-#include "tcp.h"
+#include "LanMan98BaseLib/tcp.h"
 
 
 typedef struct vc_s *vc_t;

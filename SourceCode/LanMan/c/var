@@ -28,7 +28,7 @@
 #include "swis.h"
 #include <string.h>
 #include <stdlib.h>
-#include "error.h"
+#include "LanMan98BaseLib/error.h"
 #include "var.h"
 
 char *VarRead(char *var)

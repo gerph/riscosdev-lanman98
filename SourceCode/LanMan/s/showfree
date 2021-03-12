@@ -36,7 +36,7 @@ ShowFreeReg	;void (int fs)
 	ADR	R1, handler
 	MOV	R2, #0
 	SWI	XFree_Register
- [ ATPCS32
+ [ {CONFIG} = 32
 	MSR	CPSR_f, #0
 	LDMFD	R13!, {PC}
  |
@@ -48,7 +48,7 @@ ShowFreeDeReg	;void (int fs)
 	ADR	R1, handler
 	MOV	R2, #0
 	SWI	XFree_DeRegister
- [ ATPCS32
+ [ {CONFIG} = 32
 	MSR	CPSR_f, #0
 	LDMFD	R13!, {PC}
  |
