@@ -42,7 +42,7 @@
 #include "LanMan98BaseLib/memory.h"
 #include "LanMan98BaseLib/callback.h"
 #include "omni_swis.h"
-#include "lm_swis.h"
+#include "LanMan98SWIs.h"
 #include "LanMan98FSLib/fspatch.h"
 #include "showfree.h"
 #include "LanMan98FSLib/fsys.h"
@@ -619,7 +619,7 @@ _kernel_oserror *swi_handler(int swi_no, _kernel_swi_regs *r, void *pw)
     err = NULL;
     ExceptTry
     {
-        switch(swi_no + LanMan98SWIBase)
+        switch(swi_no + LanMan98_OmniOp)
         {
             case LanMan98_OmniOp:
                 omni_op(r->r[0], r);

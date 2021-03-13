@@ -14,6 +14,7 @@ other special requirements
         * Ignored the DEMO build requirements.
         * Added `memcheckcompat.h` to allow building without any MemCheck headers present.
           Add USE_MEMCHECK to the defines to build with MemCheck.
+        * Build command: `riscos-amu export`
 
     * !FSLib:
         * Moved the old `Makefile` to `MakefileOld`.
@@ -24,11 +25,33 @@ other special requirements
         * Included only the 32bit build version of the veneer (which I think is the right one).
           FIXME: Could instead use the 26bit file if in the 26bit with some conditional includes.
         * Ignored the DEMO build requirements.
+        * Build command: `riscos-amu export`
+
+    * !PGmod:
+        * Moved the old `Makefile` to `MakefileOld`.
+        * Removed binary objects.
+        * New Makefile created which allows the building into the library `LanMan98PGLib`.
+        * Made the hourglass binary code import the correct source, instead of switching the
+          object file.
+        * Build command: `riscos-amu export`
 
     * LanMan:
         * Moved the old `Makefile` to `MakefileOld`.
         * Removed binary objects.
         * New Makefile created which allows the building into the module LanMan98.
         * Replaced use of `ATPCS32` with `{CONFIG} = 32`.
+        * Changed references in the C files to use `LanMan98BaseLib/...` and `LanMan98FSLib/...`
+          for exported parts of the system.
+        * Updated to export the `LanMan98SWIs.h` header.
         * Removed the building of the LanMan98 Filer (which will be made to work next).
+        * Build command: `riscos-amu install BUILD32=1 INSTDIR='<Install$Dir>`
 
+    * LanManFiler:
+        * Created out of the sources that were in LanMan.
+        * Changed references in the C files to use `LanMan98PGLib/...` and `LanMan98SWIs.h`
+          for exported parts of the system.
+        * Copied relevant parts of the !LanMan98 at the root of the repository to be able to
+          build an application.
+        * Updated !Run to use `/` prefix and to run !RunImage, as this is the standard name,
+          expected by Filer.
+        * Build command: `riscos-amu install BUILD32=1 INSTDIR='<Install$Dir>`

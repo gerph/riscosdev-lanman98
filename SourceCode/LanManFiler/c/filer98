@@ -30,12 +30,12 @@
 #include <string.h>
 #include <ctype.h>
 #include "swis.h"
-#include "lm_swis.h"
+#include "LanMan98SWIs.h"
 #include "kernel.h"
-#include "PGwin.h"
-#include "PGicn.h"
-#include "PGmnu.h"
-#include "PGerr.h"
+#include "LanMan98PGLib/PGwin.h"
+#include "LanMan98PGLib/PGicn.h"
+#include "LanMan98PGLib/PGmnu.h"
+#include "LanMan98PGLib/PGerr.h"
 #include "lm98enum.h"
 
 #define REG_SEARCH (50*1024)

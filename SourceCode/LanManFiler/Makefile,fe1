@@ -1,0 +1,75 @@
+#!/usr/bin/env riscos-amu -f
+# Makefile for LanMan98
+#
+
+#
+# Program specific options:
+#
+COMPONENT  = LanMan98
+
+# Specifies additional targets for startup
+ifeq (${MAKECMDGOALS},install)
+INITTARGET = inittarget
+endif
+
+# Specifies additional targets for clean
+#CLEANTARGET = cleantarget
+
+# The file to output (defaults ${COMPONENT})
+#TARGET = <filename>
+
+# Comma-separated list of paths to use for includes, such as:
+#   <Lib$Dir>.LibName.
+INCLUDES   =
+
+# Space separated list of defines to set, eg -DDEBUG
+CDEFINES   =
+
+# Space separated list of libraries to link against.
+LIBS       = C:LanMan98PGLib.o.libLanMan98PGLib
+
+# Resources to include in the application, prefixed by ${APPDIR}:
+#   ${APPDIR}.Resources.MyFile
+RESOURCES = ${APPDIR}.Mappings \
+            ${APPDIR}.5Sprites \
+            ${APPDIR}.5Sprites22 \
+            ${APPDIR}.LICENCE \
+            ${APPDIR}.LanMan98 \
+
+# Objects to build, using the format o.<name> (will be varied for build type)
+OBJS       = o.filer98 \
+             o.lm98enum \
+
+
+include CApp
+
+
+ifeq (${MAKECMDGOALS},install)
+inittarget:
+         ${MKDIR} $(INSTDIR)
+         ${MKDIR} $(APPDIR)
+         ${MKDIR} $(APPDIR).Discs
+endif
+
+# Installation of any resources into the application:
+#   ${RDIR} is the Resources directory
+#   ${LDIR} is the locale specified directory (eg Resources.UK)
+$(APPDIR).Mappings: $(RDIR).Mappings
+        $(CP) $(RDIR).Mappings $(APPDIR).Mappings $(CPFLAGS)
+$(APPDIR).5Sprites: $(RDIR).5Sprites
+        $(CP) $(RDIR).5Sprites $(APPDIR).5Sprites $(CPFLAGS)
+$(APPDIR).5Sprites22: $(RDIR).5Sprites22
+        $(CP) $(RDIR).5Sprites22 $(APPDIR).5Sprites22 $(CPFLAGS)
+$(APPDIR).LICENCE: $(LDIR).LICENCE
+        $(CP) $(LDIR).LICENCE $(APPDIR).LICENCE $(CPFLAGS)
+
+$(APPDIR).LanMan98: <Install$Dir>.LanMan98
+ifdef __crosscompile
+        # For various reasons, this export doesn't work properly using the riscos-copy tool.
+        cp $? $@,ffa
+else
+        $(CP) $? $@ $(CPFLAGS)
+endif
+
+#---------------------------------------------------------------------------
+# Dynamic dependencies:

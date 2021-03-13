@@ -1,0 +1,7 @@
+/* Selector for the hourglass code */
+
+#ifdef BUILD32
+#include "hg_code32.c"
+#else
+#include "hg_code26.c"
+#endif

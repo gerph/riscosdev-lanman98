@@ -1,0 +1,105 @@
+#!/usr/bin/env riscos-amu -f
+# Makefile for LanMan98PGLib
+#
+
+#
+# Program specific options:
+#
+COMPONENT  = LanMan98PGLib
+
+# Specifies additional targets for startup
+#INITTARGET = inittarget
+
+# Specifies additional targets for clean
+#CLEANTARGET = cleantarget
+
+# Files to export as part of export_hdr or export_libs
+# To export to the library in a subdirectory, use an export like:
+#   ${EXP_LIB}.${COMPONENT}.h.myheader
+EXPORTS    = ${EXP_LIB}.${COMPONENT}.h.keys \
+             ${EXP_LIB}.${COMPONENT}.h.PGdev \
+             ${EXP_LIB}.${COMPONENT}.h.PGerr \
+             ${EXP_LIB}.${COMPONENT}.h.PGflex \
+             ${EXP_LIB}.${COMPONENT}.h.PGfs \
+             ${EXP_LIB}.${COMPONENT}.h.PGgr \
+             ${EXP_LIB}.${COMPONENT}.h.PGicn \
+             ${EXP_LIB}.${COMPONENT}.h.PGmnu \
+             ${EXP_LIB}.${COMPONENT}.h.PGmode \
+             ${EXP_LIB}.${COMPONENT}.h.PGprt \
+             ${EXP_LIB}.${COMPONENT}.h.PGscan \
+             ${EXP_LIB}.${COMPONENT}.h.PGscn \
+             ${EXP_LIB}.${COMPONENT}.h.PGspr \
+             ${EXP_LIB}.${COMPONENT}.h.PGsprf \
+             ${EXP_LIB}.${COMPONENT}.h.PGtm \
+             ${EXP_LIB}.${COMPONENT}.h.PGvar \
+             ${EXP_LIB}.${COMPONENT}.h.PGwin \
+
+# Comma-separated list of paths to use for includes, such as:
+#   <Lib$Dir>.LibName.
+INCLUDES   = TBox:
+
+# Space separated list of defines to set, eg -DDEBUG
+CDEFINES   =
+
+# Objects to build, using the format o.<name> (will be varied for build type)
+OBJS       = o.hg \
+             o.PGdev \
+             o.PGerr \
+             o.PGflex \
+             o.PGfs \
+             o.PGgr \
+             o.PGicn \
+             o.PGmnu \
+             o.PGmode \
+             o.PGprt \
+             o.PGptr \
+             o.PGscan \
+             o.PGscn \
+             o.PGspr \
+             o.PGsprf \
+             o.PGtm \
+             o.PGvar \
+             o.PGwin \
+
+include LibExport
+
+# Export rules
+# For any files you export with EXPORTS you may need to include an
+# export rule
+${EXP_LIB}.${COMPONENT}.h.keys: h.keys
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.PGdev: h.PGdev
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.PGerr: h.PGerr
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.PGflex: h.PGflex
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.PGfs: h.PGfs
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.PGgr: h.PGgr
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.PGicn: h.PGicn
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.PGmnu: h.PGmnu
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.PGmode: h.PGmode
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.PGprt: h.PGprt
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.PGscan: h.PGscan
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.PGscn: h.PGscn
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.PGspr: h.PGspr
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.PGsprf: h.PGsprf
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.PGtm: h.PGtm
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.PGvar: h.PGvar
+        ${CP} $? $@ ${CPFLAGS}
+${EXP_LIB}.${COMPONENT}.h.PGwin: h.PGwin
+        ${CP} $? $@ ${CPFLAGS}
+
+#---------------------------------------------------------------------------
+# Dynamic dependencies:

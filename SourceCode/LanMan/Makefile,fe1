@@ -18,7 +18,7 @@ CLEANTARGET = cleantarget
 #   ${EXP_C_H}.${COMPONENT}SWIs
 # To export to the library in a subdirectory, use an export like:
 #   ${EXP_LIB}.${COMPONENT}.h.myheader
-EXPORTS    =  # ${EXP_C_H}.${COMPONENT}SWIs
+EXPORTS    =  ${EXP_C_H}.${COMPONENT}SWIs
 
 # Resources you want to be exported as part of the 'resources' phase of the build
 #RESOURCES  = ${RESDIR}.${COMPONENT}.Messages
@@ -76,8 +76,8 @@ $(OZDIR).omnimain: h.omniheader
 # Export rules
 # For any files you export with EXPORTS you may need to include an
 # export rule
-#${EXP_C_H}.${COMPONENT}SWIs: cmhg.modhead
-#       ${CMHG} ${CMHGFLAGS} -xh $@ cmhg.modhead
+${EXP_C_H}.${COMPONENT}SWIs: cmhg.omniheader
+       ${CMHG} ${CMHGFLAGS} -xh $@ cmhg.omniheader
 # To export bare files you can use the ${CP} command:
 # ${EXP_LIB}.${COMPONENT}.h.myheader: h.myheader
 #        ${CP} $?  $@  ${CPFLAGS}

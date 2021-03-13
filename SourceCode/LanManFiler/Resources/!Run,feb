@@ -1,0 +1,41 @@
+| !Run file for !LanMan98
+
+Set LanMan98$Dir <Obey$Dir>
+Set File$Type_069 LM98Link
+Set LM98$Path <LanMan98$Dir>.
+
+Set LM98$sprites 5Sprites
+RMEnsure Utilitymodule 5.00 Set LM98$sprites !Sprites
+IconSprites <Obey$Dir>.<LM98$Sprites>
+
+| Uncomment the following line and insert the appropriate address to
+| inform LanMan98 of the location of your name server.
+|
+|Set LanMan98$NameServer <IP address of NBNS or WINS server>
+
+| Uncomment the following line to make hidden files visible through LanMan98
+|
+|Set LanMan98$ShowHidden ""
+
+| Uncomment the following line if you wish to use Fresco while your
+| !Scrap directory is held on a remote server and accessed via LanMan98
+|
+|Set LanMan98$CallBackPatch ""
+
+| Uncomment the following line to change the default file type used by LanMan98
+|
+|Set LanMan98$DefaultType FFF
+
+| The following line tells LanMan98 to use raw read requests for speed if the
+| server claims to support it. Some NAS, and Windows Vista claim to support
+| it, but actually fail to do so. If you have problems with your connections
+| comment the following line out to make LanMan98 avoid raw reads in all
+| cases.
+Set LanMan98$ReadRaw ""
+
+RMEnsure LanMan98 0 RMLoad <LanMan98$Dir>.LanMan98 { > null: }
+RMEnsure LanMan98 0 Error "Can't find LanMan98 module"
+Obey <LanMan98$Dir>.Mappings
+
+WimpSlot -min 64K -max 64K
+/<LanMan98$Dir>.!RunImage
