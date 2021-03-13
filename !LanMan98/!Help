@@ -72,7 +72,6 @@ alongside !LanMan98.  Some libraries may have other licences which will
 be stated in their relevant documentation.
 
 
-
 Prerequisites
 =============
 
@@ -89,52 +88,49 @@ and sort these out, then come back here. You may find the 'Hints on
 networking' section below helpful here.
 
 
-Installation for use with !Omniclient or !NTFiler
-=================================================
-In the same directory as this file you are now reading you will see the main
-!LanMan98 application, and two subdirectories called "StandAlone" and
-"Restore".  Drag the !LanMan98 application to a sutiable directory on your
-hard disc, and ignore the contents of the two subdirectories: you do not need
-them.  Whenever you wish to use !LanMan98 just double-click the application,
-or better still place the application in your !Boot, inside the
+Installation for use as a standalone application
+================================================
+LanMan98 2.07 onwards is supplied ready-to-use as a standalone RISC OS 
+application, and does not need to be modified in any way before use.
+Simply copy !LanMan98 to your main drive - perhaps in the Network(ing)
+folder, or Apps.  Whenever you wish to use !LanMan98, just double-click the
+application, or better still place the application in your !Boot, inside the
 Choices.Boot.Tasks directory, so that it will be invoked automatically when
 you switch on your computer.
 
 
-Installation for use with neither !Omniclient nor !NTFiler
-==========================================================
-Follow the directions for use with !Omniclient, and then open the
-subdirectory called "StandAlone".  You will see what seems to be a second
-copy of the !LanMan98 application.  In fact, it is just a skeleton containing
-the few extra files required for stand-alone use.  Copy this to the same
-directory that you copied the main application.  As with the !Omniclient
-integrated version, you simply need to double-click the !LanMan98 application
-when you wish to use it, or place it in your !Boot.
+Installation for use with !Omniclient or !NTFiler
+=================================================
+In the same directory as this file you are now reading, you will see the main
+!LanMan98 application, and a sub-directory called "OmniPlugin".  The !LanMan98
+in the OmniPlugin folder will convert your copy of !LanMan98 for use with
+OmniClient or NTFiler.
+
+Drag the !LanMan98 application to a sutiable directory on your main drive
+(as described in the previous section), then open the OmniPlugin folder
+and drag the enclosed !LanMan98 over the top of the one you just placed on
+your main drive.  This will update it according. 
+
+Whenever you wish to use !LanMan98, just double-click the
+application, or better still place the application in your !Boot, inside the
+Choices.Boot.Tasks directory, so that it will be invoked automatically when
+you switch on your computer.
+
+If you ever need to convert back to a standalone copy, go into the
+"Restore" sub-directory of OmniPlugin, and drag *that* version on top of
+!LanMan98 on your main drive.
 
 
-Using !LanMan98 with !Omniclient
-================================
-!LanMan98 is not able to browse your network (i.e., it cannot automatically
-produce a list of all the shares visible from your machine).  However, if you
-have LanManFS (as you may well do if you are running !Omniclient) then
-!LanMan98 can make use of LanManFS's browsing capabilities.  This being the
-case, each auto-detected PC share on your local network will appear twice in
-!Omniclient's "FS list", once with the usual LanManFS icon, and secondly with
-a more colourful icon.  To access a mount via LanManFS, double-click the old
-grey icon; to access a mount via LanMan98, double-click the more colourful
-one.  Also from !Omniclient's main menu, you can follow "Mounts", "Protocols"
-and then click "LanMan98"; this opens a dialogue box into which to type the
-details of the share to be mounted.
+TIP - if the "drag on top" method doesn't seem to work, or achieve the
+desired results, make sure your computer is set to overwrite things when
+copying.  To do this, press Menu (middle) mouse button over any Filer 
+window, and go to Options.  Make sure "Force" is ticked, whilst "Newer"
+is NOT ticked.  This will ensure the program gets properly updated when
+you drag one on top of the other.
 
 
-Using !LanMan98 with !NTFiler
-=============================
-!NTFiler will automatically detect the presence of !LanMan98 and make use of
-it.
-
-
-Using !LanMan98 with neither !Omniclient nor !NTFiler
-=====================================================
+Using !LanMan98 as a standalone application
+===========================================
 When you double-click the !LanMan98 application (or on computer startup,
 should you have !LanMan98 in your boot sequence), an unnamed icon will appear
 on the left of the icon bar; it look like a mini-tower case with a Windows
@@ -169,6 +165,27 @@ multiple shares).  If a password was provided at the last time of connection
 to a share then the password is not remembered, but the fact that a password
 was given is remembered, and the usual "Connect" dialogue box appears, with
 all but the password filled in.
+
+
+Using !LanMan98 with !Omniclient
+================================
+!LanMan98 is not able to browse your network (i.e., it cannot automatically
+produce a list of all the shares visible from your machine).  However, if you
+have LanManFS (as you may well do if you are running !Omniclient) then
+!LanMan98 can make use of LanManFS's browsing capabilities.  This being the
+case, each auto-detected PC share on your local network will appear twice in
+!Omniclient's "FS list", once with the usual LanManFS icon, and secondly with
+a more colourful icon.  To access a mount via LanManFS, double-click the old
+grey icon; to access a mount via LanMan98, double-click the more colourful
+one.  Also from !Omniclient's main menu, you can follow "Mounts", "Protocols"
+and then click "LanMan98"; this opens a dialogue box into which to type the
+details of the share to be mounted.
+
+
+Using !LanMan98 with !NTFiler
+=============================
+!NTFiler will automatically detect the presence of !LanMan98 and make use of
+it.
 
 
 File types
@@ -493,8 +510,8 @@ people not reading the instructions properly). If you are still stuck, then
 try to get your phone as near as possible to your computer and give us a ring.
 
 
-Licence
-=======
+Copyright
+=========
 !LanMan98 was Copyright © Warm Silence Software Ltd. 1998-2008.
 
 The new Open Source Edition (v2.07+) is Copyright © RISC OS Developments
