@@ -1,0 +1,48 @@
+# Build all the parts of LanMan98.
+
+.PHONY: filer fs pglib baselib fslib clean
+
+CD = dir
+
+ifdef DO_CLEAN
+TARGET_INSTALL = clean
+TARGET_EXPORT = clean
+else
+TARGET_INSTALL = install
+TARGET_EXPORT = export
+endif
+
+filer: fs pglib
+    ${CD} LanManFiler
+    ${MAKE} ${TARGET_INSTALL} BUILD32=1 INSTDIR=inst
+    ${CD} ^
+
+fs: baselib fslib
+    ${CD} LanMan
+    ${MAKE} export
+    ${MAKE} ${TARGET_INSTALL} BUILD32=1 INSTDIR=<Install$Dir>
+    ${CD} ^
+
+baselib:
+    ${CD} !BaseLIB.src
+    ${MAKE} ${TARGET_EXPORT}
+    ${CD} ^.^
+
+fslib: baselib
+    ${CD} !FSLIB.src
+    ${MAKE} ${TARGET_EXPORT}
+    ${CD} ^.^
+
+pglib:
+    ${CD} !PGmod.PGmodDev
+    ${MAKE} ${TARGET_EXPORT}
+    ${CD} ^.^
+
+# Clear out all the binaries
+clean:
+    ${MAKE} DO_CLEAN=1
+
+# Clear out all the binaries and then build everything
+fresh:
+    ${MAKE} DO_CLEAN=1
+    ${MAKE}

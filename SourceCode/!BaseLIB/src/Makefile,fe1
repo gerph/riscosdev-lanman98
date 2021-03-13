@@ -35,7 +35,7 @@ EXPORTS    = ${EXP_LIB}.${COMPONENT}.h.blocked \
 INCLUDES   = C:LanMan98BaseLib.,TCPIPLibs:
 
 # Space separated list of defines to set, eg -DDEBUG
-CDEFINES   =
+CDEFINES   = -DTCP5
 
 # Objects to build, using the format o.<name> (will be varied for build type)
 OBJS       = o.blocked \

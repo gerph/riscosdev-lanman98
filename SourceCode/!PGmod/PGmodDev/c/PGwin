@@ -166,7 +166,10 @@ void WinInit(char *name)
     regs.r[1] = 0x4B534154;
     regs.r[2] = (int) task_name;
     regs.r[3] = (int) messages;
-    _kernel_swi(Wimp_Initialise, &regs, &regs);
+    if (_kernel_swi(Wimp_Initialise, &regs, &regs))
+    {
+        ErrorFatal("Wimp_Initialise failed");
+    }
     task = regs.r[1];
     atexit(lose_fonts);
 }
@@ -484,7 +487,11 @@ win_template WinLdTplt(char *file_name, char *tplt_name)
     char cbuf[12];
 
     regs.r[1] = (int) file_name;
-    _kernel_swi(Wimp_OpenTemplate, &regs, &regs);
+    if (_kernel_swi(Wimp_OpenTemplate, &regs, &regs))
+    {
+        ErrorFatal("Cannot open template file");
+        return NULL;
+    }
 
     strncpy(cbuf, tplt_name, 12);
     cbuf[11] = '\0';
@@ -494,7 +501,11 @@ win_template WinLdTplt(char *file_name, char *tplt_name)
     regs.r[4] = -1;
     regs.r[5] = (int) cbuf;
     regs.r[6] = 0;
-    _kernel_swi(Wimp_LoadTemplate, &regs, &regs);
+    if (_kernel_swi(Wimp_LoadTemplate, &regs, &regs))
+    {
+        ErrorFatal("Cannot load template");
+        return NULL;
+    }
     win_size = regs.r[1];
     ind_size = regs.r[2];
 

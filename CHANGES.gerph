@@ -34,6 +34,8 @@ other special requirements
         * Made the hourglass binary code import the correct source, instead of switching the
           object file.
         * Build command: `riscos-amu export`
+        * Added error reports if Wimp fails to initialise, or templates fail to open.
+          You might be running an OS without a WindowManager (or it may be out of memory).
 
     * LanMan:
         * Moved the old `Makefile` to `MakefileOld`.

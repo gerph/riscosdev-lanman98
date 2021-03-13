@@ -13,7 +13,7 @@ INITTARGET = inittarget
 endif
 
 # Specifies additional targets for clean
-#CLEANTARGET = cleantarget
+CLEANTARGET = cleantarget
 
 # The file to output (defaults ${COMPONENT})
 #TARGET = <filename>
@@ -46,10 +46,17 @@ include CApp
 
 ifeq (${MAKECMDGOALS},install)
 inittarget:
-         ${MKDIR} $(INSTDIR)
-         ${MKDIR} $(APPDIR)
-         ${MKDIR} $(APPDIR).Discs
+        ${MKDIR} $(INSTDIR)
+        ${MKDIR} $(APPDIR)
+        ${MKDIR} $(APPDIR).Discs
 endif
+
+cleantarget:
+        ${DESTROY} ${APPDIR}.Mappings \
+                   ${APPDIR}.5Sprites \
+                   ${APPDIR}.5Sprites22 \
+                   ${APPDIR}.LICENCE \
+                   ${APPDIR}.LanMan98 \
 
 # Installation of any resources into the application:
 #   ${RDIR} is the Resources directory
@@ -64,12 +71,7 @@ $(APPDIR).LICENCE: $(LDIR).LICENCE
         $(CP) $(LDIR).LICENCE $(APPDIR).LICENCE $(CPFLAGS)
 
 $(APPDIR).LanMan98: <Install$Dir>.LanMan98
-ifdef __crosscompile
-        # For various reasons, this export doesn't work properly using the riscos-copy tool.
-        cp $? $@,ffa
-else
-        $(CP) $? $@ $(CPFLAGS)
-endif
+        $(CP) "<Install$Dir>.LanMan98" $(APPDIR).LanMan98 $(CPFLAGS)
 
 #---------------------------------------------------------------------------
 # Dynamic dependencies:

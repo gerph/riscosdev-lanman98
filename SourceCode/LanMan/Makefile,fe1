@@ -29,11 +29,11 @@ INCLUDES   =
 
 # Space separated list of libraries to link against.
 # (${CLIB} is implicit, unless NOCLIB = yes)
-LIBS       = C:LanMan98BaseLib.o.libLanMan98BaseLib \
-             C:LanMan98FSLib.o.libLanMan98FSLib \
-             TCPIPLibs:o.socklib \
-             TCPIPLibs:o.inetlib \
-             TCPIPLibs:o.unixlib \
+LIBS       = C:LanMan98BaseLib.o.libLanMan98BaseLibzm \
+             C:LanMan98FSLib.o.libLanMan98FSLibzm \
+             TCPIPLibs:o.socklibzm \
+             TCPIPLibs:o.inetlibzm \
+             TCPIPLibs:o.unixlibzm \
 
 # Space separated list of defines to set, eg -DDEBUG
 CDEFINES   =
