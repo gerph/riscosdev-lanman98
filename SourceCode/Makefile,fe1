@@ -16,6 +16,8 @@
 
 CD = dir
 
+include _Tools
+
 ifdef DO_CLEAN
 TARGET_INSTALL = clean
 TARGET_EXPORT = clean
@@ -29,11 +31,21 @@ endif
 INSTDIR ?= inst
 
 filer: fs pglib
+ifeq (${MAKECMDGOALS},clean)
+    ${DESTROY} LanManFiler.VersionNum
+else
+    ${CP} ^.VersionNum LanManFiler.VersionNum ${CPFLAGS}
+endif
     ${CD} LanManFiler
     ${MAKE} ${TARGET_INSTALL} BUILD32=1 INSTDIR=${INSTDIR}
     ${CD} ^
 
 fs: baselib fslib
+ifeq (${MAKECMDGOALS},clean)
+    ${DESTROY} LanMan.VersionNum
+else
+    ${CP} ^.VersionNum LanMan.VersionNum ${CPFLAGS}
+endif
     ${CD} LanMan
     ${MAKE} export
     ${MAKE} ${TARGET_INSTALL} BUILD32=1 INSTDIR=<Install$Dir>

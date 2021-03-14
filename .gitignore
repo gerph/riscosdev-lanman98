@@ -12,3 +12,9 @@ rm32/
 aif/
 aif32/
 
+# CMHG header file is auto-generated
+SourceCode/LanMan/h/omniheader
+
+# VersionNum files are copied from the root.
+SourceCode/LanMan/VersionNum
+SourceCode/LanManFiler/VersionNum

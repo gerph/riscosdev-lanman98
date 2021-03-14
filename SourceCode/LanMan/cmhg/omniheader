@@ -1,5 +1,7 @@
 
-help-string:  LanMan98 2.08 CIFS client.
+#include "VersionNum"
+
+help-string:  LanMan98 Module_MajorVersion_CMHG CIFS client.
 
 title-string: LanMan98
 

@@ -21,16 +21,15 @@
 name: RISC OS
 
 # Controls when the action will run. Triggers the workflow on:
-#   * push or pull request on any branch.
+#   * push on any branch.
 #   * tag creation for tags beginning with a 'v'
 on:
   push:
     branches: ["*"]
-  pull_request:
-    branches: ["*"]
-  create:
-    tags:
-      - v*
+    tags: ["v*"]
+  # Pull request events happen on pull request state transitions, so we probably don't want this here.
+  #pull_request:
+  #  branches: ["*"]
 
 jobs:
   build-riscos:
@@ -51,7 +50,7 @@ jobs:
         run: |
           set -o pipefail
           # Zip up the source to send to robuild
-          zip -q9r /tmp/source-archive.zip SourceCode .robuild.yaml
+          zip -q9r /tmp/source-archive.zip SourceCode .robuild.yaml VersionNum
           # Fetch the build client
           curl -s -L -o riscos-build-online https://github.com/gerph/robuild-client/releases/download/v0.05/riscos-build-online && chmod +x riscos-build-online
           # Send the archive file to build service
