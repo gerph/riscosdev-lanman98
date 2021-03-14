@@ -2,7 +2,14 @@ Changes for easier building
 ===========================
 
 Changes made by Gerph to allow the build of the libraries using cross-compilation tools, without
-other special requirements
+other special requirements.
+
+* How to build:
+    * Requires the cross-compiling build environment.
+    * In the SourceCode directory, to build, use either:
+        * `riscos-amu`
+        * `amu`
+    * VersionNum files will be copied to the necessary locations for the build.
 
 * SourceCode:
     * !BaseLib:
@@ -47,6 +54,7 @@ other special requirements
         * Updated to export the `LanMan98SWIs.h` header.
         * Removed the building of the LanMan98 Filer (which will be made to work next).
         * Build command: `riscos-amu install BUILD32=1 INSTDIR='<Install$Dir>`
+        * Updated CMHG file to use `VersionNum` for centralised version management.
 
     * LanManFiler:
         * Created out of the sources that were in LanMan.
@@ -57,3 +65,10 @@ other special requirements
         * Updated !Run to use `/` prefix and to run !RunImage, as this is the standard name,
           expected by Filer.
         * Build command: `riscos-amu install BUILD32=1 INSTDIR='<Install$Dir>`
+
+* GitHub actions configuration:
+
+    * Submits the source to the RISC OS Build service to build the code.
+      (RISC OS Build service was updated due to bugs found during the building)
+    * Takes about 16 minutes to build (comparison: On MacBook, native building takes 7
+      seconds).

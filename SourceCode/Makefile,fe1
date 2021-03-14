@@ -1,8 +1,22 @@
 # Build all the parts of LanMan98.
+#
+# amu
+#   - build everything
+# amu clean
+#   - clean everything
+# amu fresh
+#   - clean everything and then build everything
+#
+# Pass variables:
+#   INSTDIR - the RISC OS directory into which the filer should be installed,
+#             relative to SourceCode.LanManFiler
+#
 
 .PHONY: filer fs pglib baselib fslib clean
 
 CD = dir
+
+include _Tools
 
 ifdef DO_CLEAN
 TARGET_INSTALL = clean
@@ -12,12 +26,26 @@ TARGET_INSTALL = install
 TARGET_EXPORT = export
 endif
 
+# By default we will install the application into the LanManFiler directory 'inst'.
+# But it can be overridden.
+INSTDIR ?= inst
+
 filer: fs pglib
+ifeq (${MAKECMDGOALS},clean)
+    ${DESTROY} LanManFiler.VersionNum
+else
+    ${CP} ^.VersionNum LanManFiler.VersionNum ${CPFLAGS}
+endif
     ${CD} LanManFiler
-    ${MAKE} ${TARGET_INSTALL} BUILD32=1 INSTDIR=inst
+    ${MAKE} ${TARGET_INSTALL} BUILD32=1 INSTDIR=${INSTDIR}
     ${CD} ^
 
 fs: baselib fslib
+ifeq (${MAKECMDGOALS},clean)
+    ${DESTROY} LanMan.VersionNum
+else
+    ${CP} ^.VersionNum LanMan.VersionNum ${CPFLAGS}
+endif
     ${CD} LanMan
     ${MAKE} export
     ${MAKE} ${TARGET_INSTALL} BUILD32=1 INSTDIR=<Install$Dir>
