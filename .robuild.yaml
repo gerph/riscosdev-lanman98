@@ -1,0 +1,48 @@
+%YAML 1.0
+---
+
+# Example .robuild.yml file
+
+# Source is optional (NYI), and should be a URL to source the content from
+#source: <url>
+
+# Defines a list of jobs which will be performed.
+# Only 1 job will currently be executed.
+jobs:
+  build:
+    # Env defines system variables which will be used within the environment.
+    # Multiple variables may be assigned.
+    env:
+      "Sys$Environment": ROBuild
+
+    # Directory to change to before running script
+    #dir: <working directory>
+
+    # Commands which should be executed to perform the build.
+    # The build will terminate if any command returns a non-0 return code or an error.
+    script:
+      - cdir $.Build
+      - cdir $.Build.Export
+      - cdir $.Build.Export.C
+      - cdir $.Build.Install
+      - set Build$Dir $.Build
+      - set Exports$Dir <Build$Dir>.Export
+      - set CExport$Dir <Exports$Dir>.C
+      - set Install$Dir <Build$Dir>.Install
+      - set C$Path <CExport$Dir>.,<C$Path>
+      - set Locale UK
+      - cdir Artifacts
+      - dir SourceCode
+      # There's a bug in the module command parser in Pyromaniac, which means that commands
+      # with multiple spaces don't work properly. This alias fixes the issue with *Copy until
+      # the OS is fixed (0.21.2138 and higher)
+      - set Alias$Copy %Copy %0 %1 %2
+      - amu INSTDIR=^.^.Artifacts
+
+    # Outputs from the build are defined in artifacts
+    # These are a list of artifacts to report directories or files.
+    # Only a single item is currently supported.
+    artifacts:
+      # Each element of the artifacts should have a path key, which gives the file or
+      # directory to return.
+      - path: Artifacts

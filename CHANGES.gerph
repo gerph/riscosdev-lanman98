@@ -2,7 +2,7 @@ Changes for easier building
 ===========================
 
 Changes made by Gerph to allow the build of the libraries using cross-compilation tools, without
-other special requirements
+other special requirements.
 
 * SourceCode:
     * !BaseLib:
@@ -57,3 +57,10 @@ other special requirements
         * Updated !Run to use `/` prefix and to run !RunImage, as this is the standard name,
           expected by Filer.
         * Build command: `riscos-amu install BUILD32=1 INSTDIR='<Install$Dir>`
+
+* GitHub actions configuration:
+
+    * Submits the source to the RISC OS Build service to build the code.
+      (RISC OS Build service was updated due to bugs found during the building)
+    * Takes about 16 minutes to build (comparison: On MacBook, native building takes 7
+      seconds).
