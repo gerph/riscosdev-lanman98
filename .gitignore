@@ -1,16 +1,16 @@
 Artifacts/
-oz/
-oz32/
-od/
-o32d/
-ozd/
-oz32d/
-o/
-o32/
-rm/
-rm32/
-aif/
-aif32/
+**/aif/*
+**/aif32/*
+**/o/*
+**/o32/*
+**/o32d/*
+**/od/*
+**/oz/*
+**/oz32/*
+**/oz32d/*
+**/ozd/*
+**/rm/*
+**/rm32/*
 
 # CMHG header file is auto-generated
 SourceCode/LanMan/h/omniheader
