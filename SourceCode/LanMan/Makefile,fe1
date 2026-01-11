@@ -71,7 +71,7 @@ FILER = o.filer98 \
 include CModule
 
 # Additional dependencies
-$(OZDIR).omnimain: h.omniheader
+$(OZDIR).omnimain: h.omniheader ${EXP_C_H}.${COMPONENT}SWIs
 
 # Export rules
 # For any files you export with EXPORTS you may need to include an

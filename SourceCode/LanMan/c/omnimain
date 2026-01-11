@@ -42,7 +42,7 @@
 #include "LanMan98BaseLib/memory.h"
 #include "LanMan98BaseLib/callback.h"
 #include "omni_swis.h"
-#include "LanMan98SWIs.h"
+//#include "LanMan98SWIs.h"
 #include "LanMan98FSLib/fspatch.h"
 #include "showfree.h"
 #include "LanMan98FSLib/fsys.h"
