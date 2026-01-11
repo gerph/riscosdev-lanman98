@@ -14,6 +14,7 @@ jobs:
     # Multiple variables may be assigned.
     env:
       "Sys$Environment": ROBuild
+      "Alias$AMU": "HostAMU %*0"
 
     # Directory to change to before running script
     #dir: <working directory>
@@ -21,16 +22,6 @@ jobs:
     # Commands which should be executed to perform the build.
     # The build will terminate if any command returns a non-0 return code or an error.
     script:
-      - cdir $.Build
-      - cdir $.Build.Export
-      - cdir $.Build.Export.C
-      - cdir $.Build.Install
-      - set Build$Dir $.Build
-      - set Exports$Dir <Build$Dir>.Export
-      - set CExport$Dir <Exports$Dir>.C
-      - set Install$Dir <Build$Dir>.Install
-      - set C$Path <CExport$Dir>.,<C$Path>
-      - set Locale UK
       - cdir Artifacts
       - dir SourceCode
       # There's a bug in the module command parser in Pyromaniac, which means that commands
